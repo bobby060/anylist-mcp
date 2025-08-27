@@ -1,0 +1,19 @@
+# Dependencies
+/node_modules
+
+# Environment variables
+.env
+
+# Logs
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
