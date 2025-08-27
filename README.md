@@ -31,7 +31,8 @@ This project provides a server that integrates with the [AnyList](https://www.an
     npm install
     ```
 
-3.  **Set up environment variables:**
+3.  **Set up environment variables (Only needed for running tests, debugging):**
+
 
     Create a `.env` file in the root of the project by copying the example file:
 
@@ -58,7 +59,12 @@ This project provides a server that integrates with the [AnyList](https://www.an
         "mcpServers": {
             "anylist": {
             "command": "node",
-            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather/build/index.js"]
+            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather/build/index.js"],
+            "env": {
+                "ANYLIST_USERNAME":"yourusername@youremail.com",
+                "ANYLIST_PASSWORD":"yourpassword",
+                "ANYLIST_LIST_NAME": "target_list"
+            }
             }
         }
     }
@@ -98,3 +104,6 @@ The project includes both unit and integration tests.
     npm run test:integration
     ```
 
+## You can also debug via this command:
+
+`npx @modelcontextprotocol/inspector node src/server.js`

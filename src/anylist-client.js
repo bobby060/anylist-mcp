@@ -25,14 +25,14 @@ class AnyListClient {
       });
 
       // Authenticate
-      console.log(`Connecting to AnyList as ${username}...`);
-      await this.client.login();
-      console.log('Successfully authenticated with AnyList');
+      console.error(`Connecting to AnyList as ${username}...`);
+      await this.client.errorin();
+      console.error('Successfully authenticated with AnyList');
 
       await this.client.getLists();
 
       // Find the target list
-      console.log(`Looking for list: "${listName}"`);
+      console.error(`Looking for list: "${listName}"`);
       this.targetList = this.client.getListByName(listName);
       
       if (!this.targetList) {
@@ -41,7 +41,7 @@ class AnyListClient {
         throw error;
       }
 
-      console.log(`Connected to list: "${this.targetList.name}"`);
+      console.error(`Connected to list: "${this.targetList.name}"`);
       return true;
 
     } catch (error) {
@@ -75,12 +75,12 @@ class AnyListClient {
           existingItem.checked = false;
           existingItem.quantity = quantity; // Update quantity if needed
 
-          console.log(`Unchecked existing item: ${existingItem.name}`);
+          console.error(`Unchecked existing item: ${existingItem.name}`);
           existingItem.save();
         } else {
           
           // Item already exists and is unchecked, no action needed
-          console.log(`Item "${itemName}" already exists and is active`);
+          console.error(`Item "${itemName}" already exists and is active`);
           existingItem.quantity = quantity;
           
           existingItem.save();
@@ -93,7 +93,7 @@ class AnyListClient {
           name: itemName
         });
         await this.targetList.addItem(newItem);
-        console.log(`Added new item: ${newItem.name}`);
+        console.error(`Added new item: ${newItem.name}`);
       }
 
     } catch (error) {
@@ -115,7 +115,7 @@ class AnyListClient {
       // Find the item by name
       const existingItem = this.targetList.getItemByName(itemName);
 
-      console.log("Found item")
+      console.error("Found item")
       
       if (!existingItem) {
         const error = new Error(`Item "${itemName}" not found in list, so can't delete it`);
@@ -125,7 +125,7 @@ class AnyListClient {
 
       // Actually delete the item from the list
       await this.targetList.removeItem({ id: existingItem.id });
-      console.log(`Deleted item: ${existingItem.name}`);
+      console.error(`Deleted item: ${existingItem.name}`);
 
     } catch (error) {
       const wrappedError = new Error(`Failed to delete item "${itemName}": ${error.message}`);
@@ -155,9 +155,9 @@ class AnyListClient {
       if (!existingItem.checked) {
         existingItem.checked = true;
         await existingItem.save();
-        console.log(`Checked off item: ${existingItem.name}`);
+        console.error(`Checked off item: ${existingItem.name}`);
       } else {
-        console.log(`Item "${itemName}" is already checked off`);
+        console.error(`Item "${itemName}" is already checked off`);
       }
     } catch (error) {
       const wrappedError = new Error(`Failed to remove item "${itemName}": ${error.message}`);
@@ -170,7 +170,7 @@ class AnyListClient {
     if (this.client) {
       try {
         await this.client.teardown();
-        console.log('Disconnected from AnyList');
+        console.error('Disconnected from AnyList');
       } catch (error) {
         const wrappedError = new Error(`Error during disconnect: ${error.message}`);
         console.error(wrappedError.message);
