@@ -7,14 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test-all.js",
-    "test:unit": "node test-anylist-client-unit.js",
-    "test:integration": "node test-mcp-server-integration.js",
-    "docker:build": "docker-compose build",
-    "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f anylist-mcp",
-    "docker:test": "./test-docker.sh"
+    "test": "node test-anylist-client-unit.js"
   },
   "keywords": [
     "mcp",
