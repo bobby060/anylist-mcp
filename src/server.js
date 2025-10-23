@@ -7,10 +7,16 @@ import AnyListClient from "./anylist-client.js";
 // Load environment variables
 dotenv.config();
 
+
+
 // Create Express app
 
 // Create AnyList client
 const anylistClient = new AnyListClient();
+
+const originalConsoleLog = console.log;
+console.log = console.error;
+console.info = console.error;
 
 // Create the MCP server
 const server = new McpServer({

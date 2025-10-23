@@ -6,6 +6,8 @@ class AnyListClient {
     this.targetList = null;
   }
 
+  
+
   async connect() {
     const username = process.env.ANYLIST_USERNAME;
     const password = process.env.ANYLIST_PASSWORD;
@@ -26,8 +28,12 @@ class AnyListClient {
 
       // Authenticate
       console.error(`Connecting to AnyList as ${username}...`);
+
+  
+
       await this.client.login();
       console.error('Successfully authenticated with AnyList');
+
 
       await this.client.getLists();
 
@@ -42,6 +48,7 @@ class AnyListClient {
       }
 
       console.error(`Connected to list: "${this.targetList.name}"`);
+
       return true;
 
     } catch (error) {
