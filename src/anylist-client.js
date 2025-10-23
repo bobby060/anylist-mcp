@@ -110,7 +110,7 @@ class AnyListClient {
     }
   }
 
-  // Currently buggy
+  // Currently buggy and doesn't work as expected
   async deleteItem(itemName) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');

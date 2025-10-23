@@ -131,21 +131,6 @@ async function runAnyListClientUnitTests() {
     }
   });
 
-  // // Test 6: Delete item
-  // await runTest("Delete item", async () => {
-  //   // await client.addItem(TEST_ITEM_NAME, 1);
-
-
-  //   // Should not return anything on success
-  //   await client.deleteItem(TEST_ITEM_NAME);
-
-  //   // Verify item no longer exists
-  //   const item = client.targetList.getItemByName(TEST_ITEM_NAME);
-  //   if (item) {
-  //     throw new Error("Item should not exist after deletion");
-  //   }
-  // });
-
   // Test 7: Delete non-existent item (should fail)
   await runTest("Delete non-existent item", async () => {
     const nonExistentItem = "🚫 Non-existent Item";

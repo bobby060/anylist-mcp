@@ -24,22 +24,9 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Register health check tool
-server.registerTool("health_check", {
-  title: "Health Check",
-  description: "Check if the AnyList MCP server is running",
-  inputSchema: {}
-}, async () => ({
-  content: [
-    {
-      type: "text",
-      text: "AnyList MCP Server is running successfully!",
-    },
-  ],
-}));
 
 // Register AnyList connection test tool
-server.registerTool("anylist_connect", {
+server.registerTool("health_check", {
   title: "AnyList Connection Test", 
   description: "Test connection to AnyList and access to target shopping list",
   inputSchema: {}
