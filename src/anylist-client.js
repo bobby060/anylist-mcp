@@ -1,4 +1,4 @@
-import AnyList from 'anylist';
+import AnyList from '../anylist-js';
 
 class AnyListClient {
   constructor() {
