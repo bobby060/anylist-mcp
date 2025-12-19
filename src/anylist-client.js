@@ -151,7 +151,7 @@ class AnyListClient {
     try {
       // Find the item by name
       const existingItem = this.targetList.getItemByName(itemName);
-      
+
       if (!existingItem) {
         const error = new Error(`Item "${itemName}" not found in list, so can't check it`);
         console.error(error.message);
@@ -171,6 +171,61 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
+  }
+
+  async getItems(includeChecked = false) {
+    if (!this.targetList) {
+      const error = new Error('Not connected to any list. Call connect() first.');
+      console.error(error.message);
+      throw error;
+    }
+
+    try {
+      // Build category ID to name map from the response data
+      const categoryMap = this._buildCategoryMap();
+
+      // Get all items from the list
+      const items = this.targetList.items || [];
+
+      // Filter based on checked status
+      const filteredItems = includeChecked
+        ? items
+        : items.filter(item => !item.checked);
+
+      // Map to a clean format
+      return filteredItems.map(item => ({
+        name: item.name,
+        quantity: typeof item.quantity === 'number' ? item.quantity : 1,
+        checked: item.checked || false,
+        category: categoryMap[item.categoryMatchId] || 'other'
+      }));
+    } catch (error) {
+      const wrappedError = new Error(`Failed to get items: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  _buildCategoryMap() {
+    const categoryMap = {};
+    try {
+      // Access the raw user data from the client to get category groups
+      const userData = this.client._userData;
+      if (userData && userData.shoppingListsResponse && userData.shoppingListsResponse.categoryGroupResponses) {
+        for (const groupResponse of userData.shoppingListsResponse.categoryGroupResponses) {
+          if (groupResponse.categoryGroup && groupResponse.categoryGroup.categories) {
+            for (const category of groupResponse.categoryGroup.categories) {
+              if (category.identifier && category.name) {
+                categoryMap[category.identifier] = category.name;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to build category map: ${error.message}`);
+    }
+    return categoryMap;
   }
 
   async disconnect() {
