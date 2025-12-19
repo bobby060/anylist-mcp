@@ -249,6 +249,31 @@ async function runAnyListClientUnitTests() {
     }
   });
 
+  // Test 12: Connect with explicit list name
+  await runTest("Connect with explicit list name", async () => {
+    const listName = process.env.ANYLIST_LIST_NAME;
+    const newClient = new AnyListClient();
+
+    // Connect with explicit list name
+    await newClient.connect(listName);
+
+    if (!newClient.targetList) {
+      throw new Error("Should have connected to a list");
+    }
+    if (newClient.targetList.name !== listName) {
+      throw new Error(`Expected list "${listName}", got "${newClient.targetList.name}"`);
+    }
+
+    // Verify reconnecting to same list doesn't re-authenticate
+    const clientRef = newClient.client;
+    await newClient.connect(listName);
+    if (newClient.client !== clientRef) {
+      throw new Error("Should reuse existing client when reconnecting to same list");
+    }
+
+    await newClient.disconnect();
+  });
+
   // Cleanup
   try {
     console.log("\n🧹 Cleaning up test data...");

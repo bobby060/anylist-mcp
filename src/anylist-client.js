@@ -8,41 +8,50 @@ class AnyListClient {
 
   
 
-  async connect() {
+  async connect(listName = null) {
     const username = process.env.ANYLIST_USERNAME;
     const password = process.env.ANYLIST_PASSWORD;
-    const listName = process.env.ANYLIST_LIST_NAME;
+    const targetListName = listName || process.env.ANYLIST_LIST_NAME;
 
-    if (!username || !password || !listName) {
-      const error = new Error('Missing required environment variables: ANYLIST_USERNAME, ANYLIST_PASSWORD, or ANYLIST_LIST_NAME');
+    if (!username || !password) {
+      const error = new Error('Missing required environment variables: ANYLIST_USERNAME or ANYLIST_PASSWORD');
       console.error(error.message);
       throw error;
     }
 
+    if (!targetListName) {
+      const error = new Error('No list name provided and ANYLIST_LIST_NAME environment variable is not set');
+      console.error(error.message);
+      throw error;
+    }
+
+    // If already connected to the same list, skip reconnection
+    if (this.client && this.targetList && this.targetList.name === targetListName) {
+      return true;
+    }
+
     try {
-      // Create AnyList client
-      this.client = new AnyList({
-        email: username,
-        password: password
-      });
+      // Create AnyList client if not already authenticated
+      if (!this.client) {
+        this.client = new AnyList({
+          email: username,
+          password: password
+        });
 
-      // Authenticate
-      console.error(`Connecting to AnyList as ${username}...`);
+        // Authenticate
+        console.error(`Connecting to AnyList as ${username}...`);
+        await this.client.login();
+        console.error('Successfully authenticated with AnyList');
 
-  
-
-      await this.client.login();
-      console.error('Successfully authenticated with AnyList');
-
-
-      await this.client.getLists();
+        await this.client.getLists();
+      }
 
       // Find the target list
-      console.error(`Looking for list: "${listName}"`);
-      this.targetList = this.client.getListByName(listName);
-      
+      console.error(`Looking for list: "${targetListName}"`);
+      this.targetList = this.client.getListByName(targetListName);
+
       if (!this.targetList) {
-        const error = new Error(`List "${listName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
+        const error = new Error(`List "${targetListName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
         console.error(error.message);
         throw error;
       }
