@@ -173,7 +173,7 @@ class AnyListClient {
     }
   }
 
-  async getItems(includeChecked = false) {
+  async getItems(includeChecked = false, includeNotes = false) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -193,12 +193,18 @@ class AnyListClient {
         : items.filter(item => !item.checked);
 
       // Map to a clean format
-      return filteredItems.map(item => ({
-        name: item.name,
-        quantity: typeof item.quantity === 'number' ? item.quantity : 1,
-        checked: item.checked || false,
-        category: categoryMap[item.categoryMatchId] || 'other'
-      }));
+      return filteredItems.map(item => {
+        const result = {
+          name: item.name,
+          quantity: typeof item.quantity === 'number' ? item.quantity : 1,
+          checked: item.checked || false,
+          category: categoryMap[item.categoryMatchId] || 'other'
+        };
+        if (includeNotes && item.note) {
+          result.note = item.note;
+        }
+        return result;
+      });
     } catch (error) {
       const wrappedError = new Error(`Failed to get items: ${error.message}`);
       console.error(wrappedError.message);
