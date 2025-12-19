@@ -9,11 +9,12 @@ Tested on Windows with Claude Desktop, but should also work with Claude Code.
 - **Connect to AnyList:** Authenticate with your AnyList account and connect to a specific shopping list.
 - **Add Items:** Add new items to your shopping list with an optional quantity.
 - **Check Off Items:** Mark items as completed on your shopping list.
+- **List Items:** View all items on your shopping list, grouped by category.
+- **List Available Lists:** See all lists available in your AnyList account.
 - **Health Check:** A simple endpoint to verify that the server is running.
 
 
 ### Next steps:
-- List items on shopping list
 - Delete items entirely from shopping list (not just check off)
 
 Note: The API to anylist comes from a fork of [this repo](https://github.com/codetheweb/anylist) by @codetheweb. The only change I made was to remove console.info statements, since the writing to stdout causes issues with local MCP servers.
@@ -78,13 +79,20 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
 
 The following tools are registered with the MCP server:
 
--   `health_check`: Check if the server is running.
--   `anylist_connect`: Test the connection to AnyList.
+-   `health_check`: Test connection to AnyList and verify access to target shopping list.
+    -   `list_name` (string, optional): Name of the list to use (defaults to ANYLIST_LIST_NAME env var).
 -   `add_item`: Add an item to the shopping list.
     -   `name` (string, required): The name of the item to add.
     -   `quantity` (number, optional): The quantity of the item.
+    -   `list_name` (string, optional): Name of the list to use.
 -   `check_item`: Check off an item from the shopping list.
     -   `name` (string, required): The name of the item to check off.
+    -   `list_name` (string, optional): Name of the list to use.
+-   `list_items`: Get all items from a shopping list.
+    -   `include_checked` (boolean, optional): Include checked-off items (default: false).
+    -   `include_notes` (boolean, optional): Include notes associated with each item (default: false).
+    -   `list_name` (string, optional): Name of the list to use.
+-   `list_lists`: Get all available lists in the AnyList account.
 
 ## Testing
 
