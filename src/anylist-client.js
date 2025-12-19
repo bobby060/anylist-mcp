@@ -72,6 +72,14 @@ class AnyListClient {
     return this.client.lists.map(list => list.name);
   }
 
+  getLists() {
+    if (!this.client || !this.client.lists) return [];
+    return this.client.lists.map(list => ({
+      name: list.name,
+      itemCount: list.items ? list.items.length : 0
+    }));
+  }
+
   // TODO: Update quantity
   async addItem(itemName, quantity = 1) {
     if (!this.targetList) {
