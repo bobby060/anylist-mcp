@@ -117,3 +117,5 @@ npx @modelcontextprotocol/inspector node src/server.js
 
 ## Contributions
 Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.
+
+When adding or modifying tool calls, please ensure to add tests that cover the added functionality. This makes it easier for me to test and merge changes!
