@@ -90,7 +90,7 @@ server.registerTool("add_item", {
 // Register check_item tool
 server.registerTool("check_item", {
   title: "Check Off Item from Shopping List",
-  description: "Mark an item as completed (check it off) on the AnyList shopping list", 
+  description: "Mark an item as completed (check it off) on the AnyList shopping list",
   inputSchema: {
     name: z.string().describe("Name of the item to check off")
   }
@@ -112,6 +112,72 @@ server.registerTool("check_item", {
         {
           type: "text",
           text: `Failed to check off item: ${error.message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+});
+
+// Register list_items tool
+server.registerTool("list_items", {
+  title: "List Shopping List Items",
+  description: "Get all items from the AnyList shopping list",
+  inputSchema: {
+    include_checked: z.boolean().optional().describe("Include checked-off items (default: false)")
+  }
+}, async ({ include_checked }) => {
+  try {
+    await anylistClient.connect();
+    const items = await anylistClient.getItems(include_checked || false);
+
+    if (items.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: include_checked
+              ? "Your shopping list is empty."
+              : "No unchecked items on your shopping list.",
+          },
+        ],
+      };
+    }
+
+    // Group items by category
+    const itemsByCategory = {};
+    items.forEach(item => {
+      const cat = item.category || 'other';
+      if (!itemsByCategory[cat]) {
+        itemsByCategory[cat] = [];
+      }
+      itemsByCategory[cat].push(item);
+    });
+
+    // Format output grouped by category
+    const itemList = Object.keys(itemsByCategory).sort().map(category => {
+      const categoryItems = itemsByCategory[category].map(item => {
+        const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
+        const status = item.checked ? " ✓" : "";
+        return `  - ${item.name}${qty}${status}`;
+      }).join("\n");
+      return `**${category}**\n${categoryItems}`;
+    }).join("\n\n");
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Shopping list "${process.env.ANYLIST_LIST_NAME}" (${items.length} items):\n${itemList}`,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Failed to list items: ${error.message}`,
         },
       ],
       isError: true,

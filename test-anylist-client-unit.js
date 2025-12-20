@@ -153,11 +153,12 @@ async function runAnyListClientUnitTests() {
   // Test 8: Operations without connection (should fail)
   await runTest("Operations without connection", async () => {
     const disconnectedClient = new AnyListClient();
-    
+
     const operations = [
       () => disconnectedClient.addItem("test"),
-      () => disconnectedClient.removeItem("test"), 
-      () => disconnectedClient.deleteItem("test")
+      () => disconnectedClient.removeItem("test"),
+      () => disconnectedClient.deleteItem("test"),
+      () => disconnectedClient.getItems()
     ];
 
     for (const operation of operations) {
@@ -174,6 +175,77 @@ async function runAnyListClientUnitTests() {
       if (!errorThrown) {
         throw new Error("Should have thrown error for operation without connection");
       }
+    }
+  });
+
+  // Test 9: Get items (unchecked only)
+  await runTest("Get items (unchecked only)", async () => {
+    // Ensure test item exists and is unchecked
+    await client.addItem(TEST_ITEM_NAME, 1);
+
+    const items = await client.getItems(false);
+
+    if (!Array.isArray(items)) {
+      throw new Error("getItems should return an array");
+    }
+
+    // Verify our test item is in the list
+    const testItem = items.find(item => item.name === TEST_ITEM_NAME);
+    if (!testItem) {
+      throw new Error("Test item should be in unchecked items list");
+    }
+
+    // Verify item structure
+    if (typeof testItem.name !== 'string') {
+      throw new Error("Item should have a name string");
+    }
+    if (typeof testItem.quantity !== 'number') {
+      throw new Error("Item should have a quantity number");
+    }
+    if (typeof testItem.checked !== 'boolean') {
+      throw new Error("Item should have a checked boolean");
+    }
+    if (typeof testItem.category !== 'string') {
+      throw new Error("Item should have a category string");
+    }
+
+    // Verify no checked items are returned
+    const checkedItems = items.filter(item => item.checked);
+    if (checkedItems.length > 0) {
+      throw new Error("getItems(false) should not return checked items");
+    }
+  });
+
+  // Test 10: Get items (including checked)
+  await runTest("Get items (including checked)", async () => {
+    // Check off the test item
+    await client.removeItem(TEST_ITEM_NAME);
+
+    const items = await client.getItems(true);
+
+    if (!Array.isArray(items)) {
+      throw new Error("getItems should return an array");
+    }
+
+    // Verify our checked test item is in the list
+    const testItem = items.find(item => item.name === TEST_ITEM_NAME);
+    if (!testItem) {
+      throw new Error("Test item should be in items list when including checked");
+    }
+    if (!testItem.checked) {
+      throw new Error("Test item should be checked");
+    }
+  });
+
+  // Test 11: Get items excludes checked by default
+  await runTest("Get items excludes checked by default", async () => {
+    // Test item should still be checked from previous test
+    const items = await client.getItems();
+
+    // Verify our checked test item is NOT in the list
+    const testItem = items.find(item => item.name === TEST_ITEM_NAME);
+    if (testItem) {
+      throw new Error("Checked test item should not be in default getItems() result");
     }
   });
 
