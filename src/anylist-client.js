@@ -63,6 +63,14 @@ class AnyListClient {
     return this.client.lists.map(list => list.name);
   }
 
+  getLists() {
+    if (!this.client || !this.client.lists) return [];
+    return this.client.lists.map(list => ({
+      name: list.name,
+      uncheckedCount: list.items ? list.items.filter(item => !item.checked).length : 0
+    }));
+  }
+
   // TODO: Update quantity
   async addItem(itemName, quantity = 1) {
     if (!this.targetList) {

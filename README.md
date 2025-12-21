@@ -9,12 +9,9 @@ Tested on Windows with Claude Desktop, but should also work with Claude Code.
 - **Connect to AnyList:** Authenticate with your AnyList account and connect to a specific shopping list.
 - **Add Items:** Add new items to your shopping list with an optional quantity.
 - **Check Off Items:** Mark items as completed on your shopping list.
+- **List Items:** View all items on your shopping list, grouped by category.
+- **List Lists:** View all available lists in your account with unchecked item counts.
 - **Health Check:** A simple endpoint to verify that the server is running.
-
-
-### Next steps:
-- List items on shopping list
-- Delete items entirely from shopping list (not just check off)
 
 Note: The API to anylist comes from a fork of [this repo](https://github.com/codetheweb/anylist) by @codetheweb. The only change I made was to remove console.info statements, since the writing to stdout causes issues with local MCP servers.
 
@@ -79,12 +76,15 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
 The following tools are registered with the MCP server:
 
 -   `health_check`: Check if the server is running.
--   `anylist_connect`: Test the connection to AnyList.
 -   `add_item`: Add an item to the shopping list.
     -   `name` (string, required): The name of the item to add.
     -   `quantity` (number, optional): The quantity of the item.
 -   `check_item`: Check off an item from the shopping list.
     -   `name` (string, required): The name of the item to check off.
+-   `list_items`: Get all items from the shopping list, grouped by category.
+    -   `include_checked` (boolean, optional): Include checked-off items (default: false).
+-   `list_lists`: Get all available lists in your AnyList account.
+    -   Returns each list name with its number of unchecked items.
 
 ## Testing
 
