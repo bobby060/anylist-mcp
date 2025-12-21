@@ -1,4 +1,20 @@
 import AnyList from '../anylist-js/lib/index.js';
+import Item from '../anylist-js/lib/item.js';
+
+// Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema
+Item.prototype._encode = function() {
+  return new this._protobuf.ListItem({
+    identifier: this._identifier,
+    listId: this._listId,
+    name: this._name,
+    details: this._details,
+    checked: this._checked,
+    category: this._category,
+    userId: this._userId,
+    categoryMatchId: this._categoryMatchId,
+    manualSortIndex: this._manualSortIndex,
+  });
+};
 
 class AnyListClient {
   constructor() {
@@ -6,7 +22,7 @@ class AnyListClient {
     this.targetList = null;
   }
 
-  
+
 
   async connect() {
     const username = process.env.ANYLIST_USERNAME;
@@ -29,7 +45,7 @@ class AnyListClient {
       // Authenticate
       console.error(`Connecting to AnyList as ${username}...`);
 
-  
+
 
       await this.client.login();
       console.error('Successfully authenticated with AnyList');
@@ -40,7 +56,7 @@ class AnyListClient {
       // Find the target list
       console.error(`Looking for list: "${listName}"`);
       this.targetList = this.client.getListByName(listName);
-      
+
       if (!this.targetList) {
         const error = new Error(`List "${listName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
         console.error(error.message);
@@ -64,7 +80,7 @@ class AnyListClient {
   }
 
   // TODO: Update quantity
-  async addItem(itemName, quantity = 1) {
+  async addItem(itemName, quantity = 1, notes = null) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -74,32 +90,51 @@ class AnyListClient {
     try {
       // First, check if item already exists
       const existingItem = this.targetList.getItemByName(itemName);
-      
+
       if (existingItem) {
         // Item exists - check if it's checked (completed)
         if (existingItem.checked) {
           // Uncheck the item to make it active again
           existingItem.checked = false;
           existingItem.quantity = quantity; // Update quantity if needed
+          if (notes !== null) {
+            existingItem.details = notes;
+          }
 
           console.error(`Unchecked existing item: ${existingItem.name}`);
           existingItem.save();
         } else {
-          
+
           // Item already exists and is unchecked, no action needed
           console.error(`Item "${itemName}" already exists and is active`);
           existingItem.quantity = quantity;
-          
+          if (notes !== null) {
+            existingItem.details = notes;
+          }
+
           existingItem.save();
         }
       } else {
         // Item doesn't exist, create new one
+        const itemOptions = { name: itemName };
+        if (notes !== null) {
+          itemOptions.details = notes;
+        }
 
-
-        const newItem = this.client.createItem({
-          name: itemName
-        });
+        const newItem = this.client.createItem(itemOptions);
         await this.targetList.addItem(newItem);
+
+        // Set quantity and notes after adding (can't be done via _encode)
+        if (quantity !== 1 || notes !== null) {
+          if (quantity !== 1) {
+            newItem.quantity = quantity;
+          }
+          if (notes !== null) {
+            newItem.details = notes;
+          }
+          await newItem.save();
+        }
+
         console.error(`Added new item: ${newItem.name}`);
       }
 
@@ -110,7 +145,6 @@ class AnyListClient {
     }
   }
 
-  // Currently buggy and doesn't work as expected
   async deleteItem(itemName) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
@@ -122,8 +156,6 @@ class AnyListClient {
       // Find the item by name
       const existingItem = this.targetList.getItemByName(itemName);
 
-      console.error("Found item")
-      
       if (!existingItem) {
         const error = new Error(`Item "${itemName}" not found in list, so can't delete it`);
         console.error(error.message);
@@ -131,7 +163,7 @@ class AnyListClient {
       }
 
       // Actually delete the item from the list
-      await this.targetList.removeItem({ id: existingItem.id });
+      await this.targetList.removeItem(existingItem);
       console.error(`Deleted item: ${existingItem.name}`);
 
     } catch (error) {
@@ -173,7 +205,7 @@ class AnyListClient {
     }
   }
 
-  async getItems(includeChecked = false) {
+  async getItems(includeChecked = false, includeNotes = false) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -193,12 +225,18 @@ class AnyListClient {
         : items.filter(item => !item.checked);
 
       // Map to a clean format
-      return filteredItems.map(item => ({
-        name: item.name,
-        quantity: typeof item.quantity === 'number' ? item.quantity : 1,
-        checked: item.checked || false,
-        category: categoryMap[item.categoryMatchId] || 'other'
-      }));
+      return filteredItems.map(item => {
+        const result = {
+          name: item.name,
+          quantity: typeof item.quantity === 'number' ? item.quantity : 1,
+          checked: item.checked || false,
+          category: categoryMap[item.categoryMatchId] || 'other'
+        };
+        if (includeNotes && item.details) {
+          result.note = item.details;
+        }
+        return result;
+      });
     } catch (error) {
       const wrappedError = new Error(`Failed to get items: ${error.message}`);
       console.error(wrappedError.message);

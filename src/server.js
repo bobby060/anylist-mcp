@@ -57,15 +57,16 @@ server.registerTool("health_check", {
 // Register add_item tool
 server.registerTool("add_item", {
   title: "Add Item to Shopping List",
-  description: "Add an item to the AnyList shopping list with optional quantity",
+  description: "Add an item to the AnyList shopping list with optional quantity and notes",
   inputSchema: {
     name: z.string().describe("Name of the item to add"),
-    quantity: z.number().min(1).optional().describe("Quantity of the item (optional, defaults to 1)")
+    quantity: z.number().min(1).optional().describe("Quantity of the item (optional, defaults to 1)"),
+    notes: z.string().optional().describe("Notes to attach to the item (optional)")
   }
-}, async ({ name, quantity }) => {
+}, async ({ name, quantity, notes }) => {
   try {
     await anylistClient.connect();
-    await anylistClient.addItem(name, quantity || 1);
+    await anylistClient.addItem(name, quantity || 1, notes || null);
     return {
       content: [
         {
@@ -124,12 +125,13 @@ server.registerTool("list_items", {
   title: "List Shopping List Items",
   description: "Get all items from the AnyList shopping list",
   inputSchema: {
-    include_checked: z.boolean().optional().describe("Include checked-off items (default: false)")
+    include_checked: z.boolean().optional().describe("Include checked-off items (default: false)"),
+    include_notes: z.boolean().optional().describe("Include notes for each item (default: false)")
   }
-}, async ({ include_checked }) => {
+}, async ({ include_checked, include_notes }) => {
   try {
     await anylistClient.connect();
-    const items = await anylistClient.getItems(include_checked || false);
+    const items = await anylistClient.getItems(include_checked || false, include_notes || false);
 
     if (items.length === 0) {
       return {
@@ -159,7 +161,8 @@ server.registerTool("list_items", {
       const categoryItems = itemsByCategory[category].map(item => {
         const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
         const status = item.checked ? " ✓" : "";
-        return `  - ${item.name}${qty}${status}`;
+        const note = item.note ? ` [${item.note}]` : "";
+        return `  - ${item.name}${qty}${status}${note}`;
       }).join("\n");
       return `**${category}**\n${categoryItems}`;
     }).join("\n\n");
