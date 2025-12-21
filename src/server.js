@@ -27,17 +27,19 @@ const server = new McpServer({
 
 // Register AnyList connection test tool
 server.registerTool("health_check", {
-  title: "AnyList Connection Test", 
+  title: "AnyList Connection Test",
   description: "Test connection to AnyList and access to target shopping list",
-  inputSchema: {}
-}, async () => {
+  inputSchema: {
+    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
+  }
+}, async ({ list_name }) => {
   try {
-    await anylistClient.connect();
+    await anylistClient.connect(list_name);
     return {
       content: [
         {
           type: "text",
-          text: `Successfully connected to AnyList and found list: "${process.env.ANYLIST_LIST_NAME}"`,
+          text: `Successfully connected to AnyList and found list: "${anylistClient.targetList.name}"`,
         },
       ],
     };
@@ -45,7 +47,7 @@ server.registerTool("health_check", {
     return {
       content: [
         {
-          type: "text", 
+          type: "text",
           text: `Failed to connect to AnyList: ${error.message}`,
         },
       ],
@@ -61,17 +63,18 @@ server.registerTool("add_item", {
   inputSchema: {
     name: z.string().describe("Name of the item to add"),
     quantity: z.number().min(1).optional().describe("Quantity of the item (optional, defaults to 1)"),
-    notes: z.string().optional().describe("Notes to attach to the item (optional)")
+    notes: z.string().optional().describe("Notes to attach to the item (optional)"),
+    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
   }
-}, async ({ name, quantity, notes }) => {
+}, async ({ name, quantity, notes, list_name }) => {
   try {
-    await anylistClient.connect();
+    await anylistClient.connect(list_name);
     await anylistClient.addItem(name, quantity || 1, notes || null);
     return {
       content: [
         {
           type: "text",
-          text: `Successfully added "${name}" to your shopping list`,
+          text: `Successfully added "${name}" to list "${anylistClient.targetList.name}"`,
         },
       ],
     };
@@ -93,17 +96,18 @@ server.registerTool("check_item", {
   title: "Check Off Item from Shopping List",
   description: "Mark an item as completed (check it off) on the AnyList shopping list",
   inputSchema: {
-    name: z.string().describe("Name of the item to check off")
+    name: z.string().describe("Name of the item to check off"),
+    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
   }
-}, async ({ name }) => {
+}, async ({ name, list_name }) => {
   try {
-    await anylistClient.connect();
+    await anylistClient.connect(list_name);
     await anylistClient.removeItem(name);
     return {
       content: [
         {
           type: "text",
-          text: `Successfully checked off "${name}" from your shopping list`,
+          text: `Successfully checked off "${name}" from list "${anylistClient.targetList.name}"`,
         },
       ],
     };
@@ -126,11 +130,12 @@ server.registerTool("list_items", {
   description: "Get all items from the AnyList shopping list",
   inputSchema: {
     include_checked: z.boolean().optional().describe("Include checked-off items (default: false)"),
-    include_notes: z.boolean().optional().describe("Include notes for each item (default: false)")
+    include_notes: z.boolean().optional().describe("Include notes for each item (default: false)"),
+    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
   }
-}, async ({ include_checked, include_notes }) => {
+}, async ({ include_checked, include_notes, list_name }) => {
   try {
-    await anylistClient.connect();
+    await anylistClient.connect(list_name);
     const items = await anylistClient.getItems(include_checked || false, include_notes || false);
 
     if (items.length === 0) {
@@ -139,8 +144,8 @@ server.registerTool("list_items", {
           {
             type: "text",
             text: include_checked
-              ? "Your shopping list is empty."
-              : "No unchecked items on your shopping list.",
+              ? `List "${anylistClient.targetList.name}" is empty.`
+              : `No unchecked items on list "${anylistClient.targetList.name}".`,
           },
         ],
       };
@@ -171,7 +176,7 @@ server.registerTool("list_items", {
       content: [
         {
           type: "text",
-          text: `Shopping list "${process.env.ANYLIST_LIST_NAME}" (${items.length} items):\n${itemList}`,
+          text: `Shopping list "${anylistClient.targetList.name}" (${items.length} items):\n${itemList}`,
         },
       ],
     };
