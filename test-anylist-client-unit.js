@@ -249,6 +249,97 @@ async function runAnyListClientUnitTests() {
     }
   });
 
+  // Test 12: Add new item with quantity > 1
+  const TEST_ITEM_WITH_QUANTITY = "🧪 Unit Test Item With Quantity";
+
+  await runTest("Add new item with quantity", async () => {
+    // Ensure test item doesn't exist by trying to delete it first
+    try {
+      await client.deleteItem(TEST_ITEM_WITH_QUANTITY);
+    } catch (error) {
+      // Expected if item doesn't exist
+    }
+
+    // Add item with quantity of 5
+    await client.addItem(TEST_ITEM_WITH_QUANTITY, 5);
+
+    // Verify item exists with correct quantity
+    const item = client.targetList.getItemByName(TEST_ITEM_WITH_QUANTITY);
+    if (!item) {
+      throw new Error("Item not found after adding");
+    }
+    // Quantity is stored as string in the library
+    if (item.quantity !== '5' && item.quantity !== 5) {
+      throw new Error(`Expected quantity 5, got "${item.quantity}"`);
+    }
+  });
+
+  // Test 13: Add new item with notes
+  const TEST_ITEM_WITH_NOTES = "🧪 Unit Test Item With Notes";
+  const TEST_NOTES = "Test note content";
+
+  await runTest("Add item with notes", async () => {
+    // Ensure test item doesn't exist by trying to delete it first
+    try {
+      await client.deleteItem(TEST_ITEM_WITH_NOTES);
+    } catch (error) {
+      // Expected if item doesn't exist
+    }
+
+    // Add item with notes
+    await client.addItem(TEST_ITEM_WITH_NOTES, 1, TEST_NOTES);
+
+    // Verify item exists
+    const item = client.targetList.getItemByName(TEST_ITEM_WITH_NOTES);
+    if (!item) {
+      throw new Error("Item not found after adding");
+    }
+    if (item.details !== TEST_NOTES) {
+      throw new Error(`Expected notes "${TEST_NOTES}", got "${item.details}"`);
+    }
+  });
+
+  // Test 14: Get items with include_notes=true returns notes
+  await runTest("Get items with include_notes=true returns notes", async () => {
+    const items = await client.getItems(false, true);
+
+    const testItem = items.find(item => item.name === TEST_ITEM_WITH_NOTES);
+    if (!testItem) {
+      throw new Error("Test item with notes should be in items list");
+    }
+    if (testItem.note !== TEST_NOTES) {
+      throw new Error(`Expected note "${TEST_NOTES}", got "${testItem.note}"`);
+    }
+  });
+
+  // Test 15: Get items with include_notes=false does not include notes
+  await runTest("Get items with include_notes=false does not include notes", async () => {
+    const items = await client.getItems(false, false);
+
+    const testItem = items.find(item => item.name === TEST_ITEM_WITH_NOTES);
+    if (!testItem) {
+      throw new Error("Test item should be in items list");
+    }
+    if (testItem.note !== undefined) {
+      throw new Error("Item should not have note property when include_notes=false");
+    }
+  });
+
+  // Test 16: Update existing item with notes
+  await runTest("Update existing item with notes", async () => {
+    const updatedNotes = "Updated test note";
+    await client.addItem(TEST_ITEM_WITH_NOTES, 1, updatedNotes);
+
+    const items = await client.getItems(false, true);
+    const testItem = items.find(item => item.name === TEST_ITEM_WITH_NOTES);
+    if (!testItem) {
+      throw new Error("Test item should be in items list");
+    }
+    if (testItem.note !== updatedNotes) {
+      throw new Error(`Expected updated note "${updatedNotes}", got "${testItem.note}"`);
+    }
+  });
+
   // Cleanup
   try {
     console.log("\n🧹 Cleaning up test data...");
@@ -257,7 +348,17 @@ async function runAnyListClientUnitTests() {
     } catch (error) {
       // Item might not exist, that's fine
     }
-    
+    try {
+      await client.deleteItem(TEST_ITEM_WITH_QUANTITY);
+    } catch (error) {
+      // Item might not exist, that's fine
+    }
+    try {
+      await client.deleteItem(TEST_ITEM_WITH_NOTES);
+    } catch (error) {
+      // Item might not exist, that's fine
+    }
+
     await client.disconnect();
     console.log("✅ Cleanup completed");
   } catch (error) {
