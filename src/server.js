@@ -188,6 +188,51 @@ server.registerTool("list_items", {
   }
 });
 
+// Register list_lists tool
+server.registerTool("list_lists", {
+  title: "List Available Lists",
+  description: "Get all available lists in the AnyList account with the number of unchecked items in each list",
+  inputSchema: {}
+}, async () => {
+  try {
+    // Connect without a specific list to authenticate and fetch lists
+    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
+    const lists = anylistClient.getLists();
+
+    if (lists.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No lists found in the account.",
+          },
+        ],
+      };
+    }
+
+    const listOutput = lists.map(list => `- ${list.name} (${list.uncheckedCount} unchecked items)`).join("\n");
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Available lists (${lists.length}):\n${listOutput}`,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Failed to list lists: ${error.message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+});
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
