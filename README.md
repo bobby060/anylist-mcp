@@ -13,7 +13,6 @@ Tested on Windows with Claude Desktop, but should also work with Claude Code.
 - **List Available Lists:** See all lists available in your AnyList account.
 - **Health Check:** A simple endpoint to verify that the server is running.
 
-
 ### Next steps:
 - Delete items entirely from shopping list (not just check off)
 
@@ -64,7 +63,7 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
         "mcpServers": {
             "anylist": {
             "command": "node",
-            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather/build/index.js"],
+            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/anylist-mcp/src/server.js"],
             "env": {
                 "ANYLIST_USERNAME":"yourusername@youremail.com",
                 "ANYLIST_PASSWORD":"yourpassword",
@@ -98,16 +97,10 @@ The following tools are registered with the MCP server:
 
 The project includes unit tests for the AnyList client.
 
--   **Run all tests:**
+-   **Run tests:**
 
     ```bash
     npm test
-    ```
-
--   **Run unit tests for the AnyList client:**
-
-    ```bash
-    npm run test:unit
     ```
 
 ## You can also debug via this command:
