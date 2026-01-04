@@ -2,7 +2,7 @@
 
 This project provides a local server that integrates with the [AnyList](https://www.anylist.com/) shopping list service and exposes its functionality through the Model Context Protocol (MCP). This allows language models (especially Claude Desktop or Claude Code) to interact with your AnyList shopping lists. Rather than having the LLM call the AnyList API directly, this server wraps common actions (like adding or checking off items) in a way that is more intuitive for the model to use - that is, more like how a human would interact with the service.
 
-Tested on Windows with Claude Desktop, but should also work with Claude Code.
+Tested on Windows with Claude Desktop, but should also work with Claude Code. HTTP server support is currently a work in progress, but should be able to be used with different clients that support MCP over HTTP. See the [HTTP_SERVER.md](HTTP_SERVER.md) for more details on how to use the HTTP server and current limitations.
 
 ## Features
 
@@ -13,7 +13,7 @@ Tested on Windows with Claude Desktop, but should also work with Claude Code.
 - **List Lists:** View all available lists in your account with unchecked item counts.
 - **Health Check:** A simple endpoint to verify that the server is running.
 
-Note: The API to anylist comes from a fork of [this repo](https://github.com/codetheweb/anylist) by @codetheweb. The only change I made was to remove console.info statements, since the writing to stdout causes issues with local MCP servers.
+Note: The API to anylist comes from a fork of [this repo](https://github.com/codetheweb/anylist) by @codetheweb. The only change I made was to remove console.info statements, since the writing to stdout causes issues with local STDIO MCP servers.
 
 ### Prerequisites
 
@@ -52,7 +52,7 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
     ANYLIST_LIST_NAME=Shopping List
     ```
 
-4. **Add to Claude Code**
+4. **Stdio Server: Claude code or Claude Desktop**
     Add this json snippet to your claude desktop config file. For information about where to find this, look [here](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
 
     ```json
@@ -60,7 +60,7 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
         "mcpServers": {
             "anylist": {
             "command": "node",
-            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather/build/index.js"],
+            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/anylist-mcp/src/server.js"],
             "env": {
                 "ANYLIST_USERNAME":"yourusername@youremail.com",
                 "ANYLIST_PASSWORD":"yourpassword",
@@ -70,6 +70,7 @@ Note: The API to anylist comes from a fork of [this repo](https://github.com/cod
         }
     }
     ```
+
 
 ## Available Tools
 
@@ -102,10 +103,26 @@ The project includes unit tests for the AnyList client.
     npm run test:unit
     ```
 
-## You can also debug via this command:
+## Debugging with MCP Inspector
+### STDIO
 ```bash
 npx @modelcontextprotocol/inspector node src/server.js
 ```
+
+### Streamable HTTP
+1. Start the server with streamable HTTP:
+
+```bash
+npm start:http
+```
+
+2. Start the inspector and connect to the server:
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+In the MCP Inspector UI, change transport type to Streamable HTTP and connect to `http://localhost:3000/mcp`.
 
 ## Contributions
 Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
+    "start:http": "node src/server-http.js",
     "dev": "node --watch src/server.js",
+    "dev:http": "node --watch src/server-http.js",
     "test": "node test-anylist-client-unit.js"
   },
   "keywords": [
@@ -18,8 +20,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.25.1",
     "anylist": "^0.8.5",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "express": "^5.0.1",
+    "node-fetch": "^3.3.2"
   }
 }
