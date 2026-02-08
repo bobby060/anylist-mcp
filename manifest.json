@@ -1,0 +1,81 @@
+{
+  "manifest_version": "0.3",
+  "name": "anylist-mcp",
+  "display_name": "AnyList",
+  "version": "1.0.0",
+  "description": "MCP server for AnyList — manage shopping lists, recipes, meal planning, and more",
+  "long_description": "# AnyList MCP Server\n\nA full-featured MCP server for [AnyList](https://www.anylist.com/) that lets Claude manage your shopping lists, recipes, meal plans, and recipe collections.\n\n## Capabilities\n\n- **Shopping Lists** — View all lists, list items by category, add items, check off items, delete items, view favorites and recently added items\n- **Recipes** — Browse, search, view full details (ingredients & steps), create new recipes, and delete recipes\n- **Meal Planning** — View meal plan events, list meal labels (Breakfast/Lunch/Dinner), create and delete meal plan events\n- **Recipe Collections** — View and create recipe collections\n- **Health Check** — Verify connection to AnyList\n\nAuthenticate with your AnyList email and password. Optionally set a default shopping list name.",
+  "author": {
+    "name": "bobby060",
+    "url": "https://github.com/bobby060/anylist-mcp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bobby060/anylist-mcp.git"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "src/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/src/server.js"],
+      "env": {
+        "ANYLIST_USERNAME": "${user_config.anylist_username}",
+        "ANYLIST_PASSWORD": "${user_config.anylist_password}",
+        "ANYLIST_LIST_NAME": "${user_config.default_list}"
+      }
+    }
+  },
+  "user_config": {
+    "anylist_username": {
+      "type": "string",
+      "title": "AnyList Email",
+      "description": "Your AnyList account email address",
+      "required": true
+    },
+    "anylist_password": {
+      "type": "string",
+      "title": "AnyList Password",
+      "description": "Your AnyList account password",
+      "required": true,
+      "sensitive": true
+    },
+    "default_list": {
+      "type": "string",
+      "title": "Default Shopping List",
+      "description": "Name of the default shopping list to use",
+      "default": "Groceries",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "health_check",
+      "description": "Test connection to AnyList and access to target shopping list"
+    },
+    {
+      "name": "shopping",
+      "description": "Manage shopping lists and items — list all lists, view/add/check off/delete items, get favorites and recents"
+    },
+    {
+      "name": "recipes",
+      "description": "Manage recipes — browse, search, view full details, create, and delete recipes"
+    },
+    {
+      "name": "meal_plan",
+      "description": "Manage meal planning calendar — view/create/delete meal plan events, list meal labels"
+    },
+    {
+      "name": "recipe_collections",
+      "description": "Manage recipe collections — view all collections and create new ones"
+    }
+  ],
+  "keywords": ["anylist", "shopping", "groceries", "recipes", "meal-planning"],
+  "license": "ISC",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=16.0.0"
+    }
+  }
+}
