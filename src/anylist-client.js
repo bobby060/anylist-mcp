@@ -346,6 +346,51 @@ class AnyListClient {
     }
   }
 
+  async importRecipeFromUrl(url) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const result = await this.client.client.post('data/recipes/web-import?url=' + encodeURIComponent(url));
+      const decoded = this.client.protobuf.PBRecipeWebImportResponse.decode(result.body);
+
+      if (decoded.statusCode !== 0 || !decoded.recipe) {
+        throw new Error(decoded.siteSpecificHelpText || 'Could not parse recipe from URL. The site may not be supported.');
+      }
+
+      // Create and save the recipe from parsed data
+      const recipe = await this.client.createRecipe({
+        name: decoded.recipe.name,
+        note: decoded.recipe.note || null,
+        sourceName: decoded.recipe.sourceName || null,
+        sourceUrl: decoded.recipe.sourceUrl || url,
+        prepTime: decoded.recipe.prepTime || null,
+        cookTime: decoded.recipe.cookTime || null,
+        servings: decoded.recipe.servings || null,
+        nutritionalInfo: decoded.recipe.nutritionalInfo || null,
+        rating: decoded.recipe.rating || null,
+        ingredients: decoded.recipe.ingredients || [],
+        preparationSteps: decoded.recipe.preparationSteps || [],
+      });
+      recipe.isNewRecipeFromWebImport = true;
+      await recipe.save();
+      console.error(`Imported recipe from URL: ${recipe.name}`);
+
+      return {
+        name: recipe.name,
+        identifier: recipe.identifier,
+        ingredientCount: decoded.recipe.ingredients?.length || 0,
+        stepCount: decoded.recipe.preparationSteps?.length || 0,
+        source: decoded.recipe.sourceName || null,
+        sourceUrl: decoded.recipe.sourceUrl || url,
+        isPremiumUser: decoded.isPremiumUser,
+        freeImportsRemaining: decoded.freeRecipeImportsRemainingCount,
+      };
+    } catch (error) {
+      throw new Error(`Failed to import recipe from URL: ${error.message}`);
+    }
+  }
+
   async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null }) {
     if (!this.client) {
       throw new Error('Not connected. Call connect() first.');

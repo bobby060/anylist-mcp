@@ -78,6 +78,22 @@ class MockAnyListClient {
     mockEvents.splice(idx, 1);
   }
   async getRecipeCollections() { return [...mockCollections]; }
+  async importRecipeFromUrl(url) {
+    const mockImport = mockRecipes._pendingImport;
+    if (!mockImport) throw new Error('Could not parse recipe from URL. The site may not be supported.');
+    const result = { identifier: 'r-imported', name: mockImport.name, ...mockImport };
+    mockRecipes.push(result);
+    return {
+      name: mockImport.name,
+      identifier: 'r-imported',
+      ingredientCount: mockImport.ingredientCount || 0,
+      stepCount: mockImport.stepCount || 0,
+      source: mockImport.source || null,
+      sourceUrl: mockImport.sourceUrl || url,
+      isPremiumUser: true,
+      freeImportsRemaining: -109,
+    };
+  }
   async createRecipeCollection(name, recipeNames = []) {
     const c = { identifier: 'c-1', name, recipeCount: recipeNames.length, recipeNames };
     mockCollections.push(c);
@@ -250,6 +266,20 @@ function createToolHandlers(client) {
         return text(`Created recipe "${result.name}"`);
       } catch (error) {
         return err(`Failed to create recipe: ${error.message}`);
+      }
+    },
+
+    import_recipe_url: async ({ url } = {}) => {
+      try {
+        await client.connect(null);
+        const result = await client.importRecipeFromUrl(url);
+        let t = `Imported recipe "${result.name}"\n`;
+        t += `- ${result.ingredientCount} ingredients, ${result.stepCount} steps\n`;
+        if (result.source) t += `- Source: ${result.source}\n`;
+        if (result.sourceUrl) t += `- URL: ${result.sourceUrl}\n`;
+        return text(t);
+      } catch (error) {
+        return err(`Failed to import recipe: ${error.message}`);
       }
     },
 
@@ -569,6 +599,30 @@ describe('AnyList MCP Server - Expanded API Coverage', () => {
         servings: '4',
       });
       assert.equal(mockRecipes[0].name, 'Full Recipe');
+    });
+  });
+
+  describe('import_recipe_url', () => {
+    it('imports a recipe from a URL', async () => {
+      mockRecipes._pendingImport = {
+        name: 'Chicken Tikka Masala',
+        ingredientCount: 12,
+        stepCount: 6,
+        source: 'AllRecipes',
+        sourceUrl: 'https://example.com/recipe',
+      };
+      const result = await handlers.import_recipe_url({ url: 'https://example.com/recipe' });
+      assert.ok(result.content[0].text.includes('Imported recipe "Chicken Tikka Masala"'));
+      assert.ok(result.content[0].text.includes('12 ingredients'));
+      assert.ok(result.content[0].text.includes('6 steps'));
+      assert.ok(result.content[0].text.includes('AllRecipes'));
+    });
+
+    it('returns error when URL cannot be parsed', async () => {
+      mockRecipes._pendingImport = null;
+      const result = await handlers.import_recipe_url({ url: 'https://bad-site.com' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('Could not parse'));
     });
   });
 

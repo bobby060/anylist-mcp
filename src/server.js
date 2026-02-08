@@ -318,9 +318,10 @@ server.registerTool("recipes", {
 - list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
 - get: Get full recipe details (ingredients, steps) by name
 - create: Create a new recipe
-- delete: Delete a recipe by name`,
+- delete: Delete a recipe by name
+- import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)`,
   inputSchema: {
-    action: z.enum(["list", "get", "create", "delete"]).describe("The recipe action to perform"),
+    action: z.enum(["list", "get", "create", "delete", "import_url"]).describe("The recipe action to perform"),
     name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
     search: z.string().optional().describe("Search query to filter recipes (list only)"),
     ingredients: z.array(z.string()).optional().describe("Ingredient strings, e.g. '2 cups flour' (create only)"),
@@ -331,9 +332,10 @@ server.registerTool("recipes", {
     prep_time: z.number().optional().describe("Prep time in minutes (create only)"),
     cook_time: z.number().optional().describe("Cook time in minutes (create only)"),
     servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create only)"),
+    url: z.string().optional().describe("URL to import recipe from (import_url only)"),
   }
 }, async (params) => {
-  const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings } = params;
+  const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url } = params;
   try {
     await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
     switch (action) {
@@ -412,6 +414,18 @@ server.registerTool("recipes", {
         }
         await anylistClient.deleteRecipe(deleteRecipeName);
         return textResponse(`Deleted recipe "${deleteRecipeName}"`);
+      }
+      case "import_url": {
+        let importUrl = url;
+        if (!importUrl) {
+          importUrl = await elicitRequiredField("url", "What URL would you like to import a recipe from?");
+        }
+        const result = await anylistClient.importRecipeFromUrl(importUrl);
+        let text = `Imported recipe "${result.name}"\n`;
+        text += `- ${result.ingredientCount} ingredients, ${result.stepCount} steps\n`;
+        if (result.source) text += `- Source: ${result.source}\n`;
+        if (result.sourceUrl) text += `- URL: ${result.sourceUrl}\n`;
+        return textResponse(text);
       }
     }
   } catch (error) {
