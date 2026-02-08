@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test-anylist-client-unit.js"
+    "test": "node test-anylist-client-unit.js",
+    "pack": "mcpb pack"
   },
   "keywords": [
     "mcp",
