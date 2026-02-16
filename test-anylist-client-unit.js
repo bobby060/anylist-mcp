@@ -365,6 +365,245 @@ async function runAnyListClientUnitTests() {
     await newClient.disconnect();
   });
 
+  // ===== Recipe Tests =====
+
+  const TEST_RECIPE_NAME = "🧪 Unit Test Recipe";
+
+  // Test: Get recipes list
+  await runTest("Get recipes list", async () => {
+    const recipes = await client.getRecipes();
+
+    if (!Array.isArray(recipes)) {
+      throw new Error("getRecipes should return an array");
+    }
+
+    // Verify structure of first recipe if any exist
+    if (recipes.length > 0) {
+      const r = recipes[0];
+      if (typeof r.identifier !== 'string') throw new Error("Recipe should have identifier string");
+      if (typeof r.name !== 'string') throw new Error("Recipe should have name string");
+      // cookTime/prepTime should be null or number (in minutes)
+      if (r.cookTime !== null && typeof r.cookTime !== 'number') throw new Error("cookTime should be null or number");
+      if (r.prepTime !== null && typeof r.prepTime !== 'number') throw new Error("prepTime should be null or number");
+    }
+
+    console.log(`    Found ${recipes.length} recipes`);
+  });
+
+  // Test: Add a recipe
+  await runTest("Add a recipe", async () => {
+    const result = await client.addRecipe({
+      name: TEST_RECIPE_NAME,
+      note: "Test recipe created by unit tests",
+      servings: "2 servings",
+      ingredients: [
+        { rawIngredient: "1 cup test flour", name: "test flour", quantity: "1 cup" },
+        { rawIngredient: "2 test eggs", name: "test eggs", quantity: "2" },
+      ],
+      preparationSteps: [
+        "Mix test ingredients",
+        "Bake at 350F for 30 minutes",
+      ],
+    });
+
+    if (!result.identifier) throw new Error("addRecipe should return identifier");
+    if (result.name !== TEST_RECIPE_NAME) throw new Error(`Expected name "${TEST_RECIPE_NAME}", got "${result.name}"`);
+    console.log(`    Created recipe: ${result.identifier}`);
+  });
+
+  // Test: Get recipe by name
+  await runTest("Get recipe by name", async () => {
+    const recipe = await client.getRecipe(TEST_RECIPE_NAME);
+
+    if (recipe.name !== TEST_RECIPE_NAME) throw new Error(`Expected name "${TEST_RECIPE_NAME}", got "${recipe.name}"`);
+    if (!recipe.identifier) throw new Error("Recipe should have identifier");
+    if (recipe.servings !== "2 servings") throw new Error(`Expected servings "2 servings", got "${recipe.servings}"`);
+    if (!Array.isArray(recipe.ingredients)) throw new Error("Recipe should have ingredients array");
+    if (recipe.ingredients.length !== 2) throw new Error(`Expected 2 ingredients, got ${recipe.ingredients.length}`);
+    if (!Array.isArray(recipe.preparationSteps)) throw new Error("Recipe should have preparationSteps array");
+    if (recipe.preparationSteps.length !== 2) throw new Error(`Expected 2 steps, got ${recipe.preparationSteps.length}`);
+    if (recipe.note !== "Test recipe created by unit tests") throw new Error(`Unexpected note: "${recipe.note}"`);
+  });
+
+  // Test: Get recipe by identifier (UUID)
+  await runTest("Get recipe by identifier", async () => {
+    // First get the UUID from a name lookup
+    const byName = await client.getRecipe(TEST_RECIPE_NAME);
+    const byId = await client.getRecipe(byName.identifier);
+
+    if (byId.name !== TEST_RECIPE_NAME) throw new Error(`Expected name "${TEST_RECIPE_NAME}", got "${byId.name}"`);
+    if (byId.identifier !== byName.identifier) throw new Error("Identifier mismatch");
+  });
+
+  // Test: Get non-existent recipe (should fail)
+  await runTest("Get non-existent recipe", async () => {
+    let errorThrown = false;
+    try {
+      await client.getRecipe("🚫 Non-existent Recipe");
+    } catch (error) {
+      errorThrown = true;
+      if (!error.message.includes("not found")) {
+        throw new Error(`Expected 'not found' error, got: ${error.message}`);
+      }
+    }
+    if (!errorThrown) throw new Error("Should have thrown error for non-existent recipe");
+  });
+
+  // Test: Recipe appears in list after adding
+  await runTest("New recipe appears in recipes list", async () => {
+    const recipes = await client.getRecipes();
+    const found = recipes.find(r => r.name === TEST_RECIPE_NAME);
+    if (!found) throw new Error("Test recipe should appear in recipes list");
+  });
+
+  // ===== Calendar Tests =====
+
+  // Use a far-future date range for test events to avoid colliding with real data
+  const TEST_CAL_DATE = '2099-12-25';
+  const TEST_CAL_DATE_2 = '2099-12-26';
+
+  // Test: Get calendar events (no args, defaults to past 30 days)
+  await runTest("Get calendar events (default range)", async () => {
+    const events = await client.getCalendarEvents();
+
+    if (!Array.isArray(events)) {
+      throw new Error("getCalendarEvents should return an array");
+    }
+
+    // Verify structure if any events exist
+    if (events.length > 0) {
+      const e = events[0];
+      if (typeof e.date !== 'string') throw new Error("Event should have date string");
+      if (typeof e.dayOfWeek !== 'string') throw new Error("Event should have dayOfWeek string");
+      if (typeof e.title !== 'string') throw new Error("Event should have title string");
+    }
+
+    console.log(`    Found ${events.length} events in default range`);
+  });
+
+  // Test: Get calendar events with date range filter
+  await runTest("Get calendar events (with date range)", async () => {
+    // Use a range that's unlikely to have events
+    const events = await client.getCalendarEvents({
+      startDate: '2099-01-01',
+      endDate: '2099-01-31',
+    });
+
+    if (!Array.isArray(events)) {
+      throw new Error("getCalendarEvents should return an array");
+    }
+
+    // All returned events should be within the range
+    for (const e of events) {
+      if (e.date < '2099-01-01' || e.date > '2099-01-31') {
+        throw new Error(`Event date ${e.date} is outside requested range`);
+      }
+    }
+  });
+
+  // We need a recipe to schedule — reuse the test recipe (re-add if cleaned up)
+  let testRecipeId;
+  await runTest("Setup: ensure test recipe for calendar tests", async () => {
+    const result = await client.addRecipe({
+      name: TEST_RECIPE_NAME,
+      note: "Test recipe for calendar tests",
+    });
+    testRecipeId = result.identifier;
+    console.log(`    Using recipe: ${result.identifier}`);
+  });
+
+  // Test: Schedule meal by recipe name
+  await runTest("Schedule meal by recipe name", async () => {
+    const result = await client.scheduleMeal(TEST_CAL_DATE, TEST_RECIPE_NAME);
+
+    if (result.recipeName !== TEST_RECIPE_NAME) {
+      throw new Error(`Expected recipe name "${TEST_RECIPE_NAME}", got "${result.recipeName}"`);
+    }
+    if (result.date !== TEST_CAL_DATE) {
+      throw new Error(`Expected date "${TEST_CAL_DATE}", got "${result.date}"`);
+    }
+  });
+
+  // Test: Schedule meal by UUID
+  await runTest("Schedule meal by UUID", async () => {
+    const result = await client.scheduleMeal(TEST_CAL_DATE_2, testRecipeId);
+
+    if (result.recipeName !== TEST_RECIPE_NAME) {
+      throw new Error(`Expected recipe name "${TEST_RECIPE_NAME}", got "${result.recipeName}"`);
+    }
+    if (result.date !== TEST_CAL_DATE_2) {
+      throw new Error(`Expected date "${TEST_CAL_DATE_2}", got "${result.date}"`);
+    }
+  });
+
+  // Test: Schedule meal with non-existent recipe
+  await runTest("Schedule meal — recipe not found", async () => {
+    let errorThrown = false;
+    try {
+      await client.scheduleMeal(TEST_CAL_DATE, "🚫 Non-existent Recipe");
+    } catch (error) {
+      errorThrown = true;
+      if (!error.message.includes("not found")) {
+        throw new Error(`Expected 'not found' error, got: ${error.message}`);
+      }
+    }
+    if (!errorThrown) throw new Error("Should have thrown error for non-existent recipe");
+  });
+
+  // Test: Schedule a freeform note
+  await runTest("Schedule a note", async () => {
+    const result = await client.scheduleNote('2099-12-27', 'Scrounge');
+
+    if (result.title !== 'Scrounge') throw new Error(`Expected title "Scrounge", got "${result.title}"`);
+    if (result.date !== '2099-12-27') throw new Error(`Expected date "2099-12-27", got "${result.date}"`);
+  });
+
+  // Test: Note appears in calendar
+  await runTest("Scheduled note appears in calendar", async () => {
+    const events = await client.getCalendarEvents({
+      startDate: '2099-12-27',
+      endDate: '2099-12-27',
+      includeFuture: true,
+    });
+
+    const found = events.find(e => e.title === 'Scrounge');
+    if (!found) throw new Error("Scheduled note should appear in calendar events");
+    if (found.recipeId !== null) throw new Error("Note event should have no recipeId");
+  });
+
+  // Test: Scheduled events appear in calendar
+  await runTest("Scheduled events appear in calendar", async () => {
+    const events = await client.getCalendarEvents({
+      startDate: '2099-12-01',
+      endDate: '2099-12-31',
+      includeFuture: true,
+    });
+
+    const recipeEvents = events.filter(e => e.title === TEST_RECIPE_NAME);
+    if (recipeEvents.length < 2) {
+      throw new Error(`Expected at least 2 recipe events, found ${recipeEvents.length}`);
+    }
+  });
+
+  // Test: Clear calendar range
+  await runTest("Clear calendar range", async () => {
+    const result = await client.clearCalendarRange('2099-12-01', '2099-12-31');
+
+    if (result.count < 3) {
+      throw new Error(`Expected at least 3 deleted events, got ${result.count}`);
+    }
+    console.log(`    Cleared ${result.count} events`);
+  });
+
+  // Test: Clear calendar range with no events
+  await runTest("Clear calendar range — no events in range", async () => {
+    const result = await client.clearCalendarRange('2099-12-01', '2099-12-31');
+
+    if (result.count !== 0) {
+      throw new Error(`Expected 0 deleted events, got ${result.count}`);
+    }
+  });
+
   // Cleanup
   try {
     console.log("\n🧹 Cleaning up test data...");
@@ -382,6 +621,17 @@ async function runAnyListClientUnitTests() {
       await client.deleteItem(TEST_ITEM_WITH_NOTES);
     } catch (error) {
       // Item might not exist, that's fine
+    }
+    // Clean up test recipe
+    try {
+      const recipes = await client.client.getRecipes();
+      const testRecipes = recipes.filter(r => r.name === TEST_RECIPE_NAME);
+      for (const r of testRecipes) {
+        await r.delete();
+        console.log("  Deleted test recipe");
+      }
+    } catch (error) {
+      console.error("  Could not delete test recipe:", error.message);
     }
 
     await client.disconnect();
