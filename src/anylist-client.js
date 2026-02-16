@@ -24,16 +24,43 @@ class AnyListClient {
 
 
 
-  async connect(listName = null) {
+  async ensureAuthenticated() {
+    if (this.client) return;
+
     const username = process.env.ANYLIST_USERNAME;
     const password = process.env.ANYLIST_PASSWORD;
-    const targetListName = listName || process.env.ANYLIST_LIST_NAME;
 
     if (!username || !password) {
       const error = new Error('Missing required environment variables: ANYLIST_USERNAME or ANYLIST_PASSWORD');
       console.error(error.message);
       throw error;
     }
+
+    this.client = new AnyList({
+      email: username,
+      password: password
+    });
+
+    console.error(`Connecting to AnyList as ${username}...`);
+    await this.client.login();
+    console.error('Successfully authenticated with AnyList');
+
+    await this.client.getLists();
+
+    // The anylist-js library never populates uid on the AnyList instance,
+    // but recipe/item operations need it in their operation metadata.
+    // Extract it from the first list's creator field.
+    if (!this.client.uid && this.client.lists.length > 0) {
+      this.client.uid = this.client.lists[0].items?.[0]?.userId
+        || this.client._userData?.shoppingListsResponse?.newLists?.[0]?.creator;
+      if (this.client.uid) {
+        console.error(`Resolved user ID: ${this.client.uid}`);
+      }
+    }
+  }
+
+  async connect(listName = null) {
+    const targetListName = listName || process.env.ANYLIST_LIST_NAME;
 
     if (!targetListName) {
       const error = new Error('No list name provided and ANYLIST_LIST_NAME environment variable is not set');
@@ -47,20 +74,7 @@ class AnyListClient {
     }
 
     try {
-      // Create AnyList client if not already authenticated
-      if (!this.client) {
-        this.client = new AnyList({
-          email: username,
-          password: password
-        });
-
-        // Authenticate
-        console.error(`Connecting to AnyList as ${username}...`);
-        await this.client.login();
-        console.error('Successfully authenticated with AnyList');
-
-        await this.client.getLists();
-      }
+      await this.ensureAuthenticated();
 
       // Find the target list
       console.error(`Looking for list: "${targetListName}"`);
@@ -281,6 +295,223 @@ class AnyListClient {
       console.error(`Failed to build category map: ${error.message}`);
     }
     return categoryMap;
+  }
+
+  async getRecipes() {
+    await this.ensureAuthenticated();
+
+    try {
+      const recipes = await this.client.getRecipes();
+      return recipes.map(recipe => ({
+        identifier: recipe.identifier,
+        name: recipe.name,
+        rating: recipe.rating || null,
+        servings: recipe.servings || null,
+        cookTime: recipe.cookTime ? Math.round(recipe.cookTime / 60) : null,
+        prepTime: recipe.prepTime ? Math.round(recipe.prepTime / 60) : null,
+      }));
+    } catch (error) {
+      const wrappedError = new Error(`Failed to get recipes: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async getRecipe(identifier) {
+    await this.ensureAuthenticated();
+
+    try {
+      const recipes = await this.client.getRecipes();
+      const recipe = recipes.find(r =>
+        r.identifier === identifier ||
+        r.name.toLowerCase() === identifier.toLowerCase()
+      );
+
+      if (!recipe) {
+        throw new Error(`Recipe "${identifier}" not found`);
+      }
+
+      return {
+        identifier: recipe.identifier,
+        name: recipe.name,
+        rating: recipe.rating || null,
+        servings: recipe.servings || null,
+        cookTime: recipe.cookTime ? Math.round(recipe.cookTime / 60) : null,
+        prepTime: recipe.prepTime ? Math.round(recipe.prepTime / 60) : null,
+        sourceName: recipe.sourceName || null,
+        sourceUrl: recipe.sourceUrl || null,
+        note: recipe.note || null,
+        nutritionalInfo: recipe.nutritionalInfo || null,
+        ingredients: (recipe.ingredients || []).map(ing => ({
+          rawIngredient: ing.rawIngredient || null,
+          name: ing.name || null,
+          quantity: ing.quantity || null,
+          note: ing.note || null,
+        })),
+        preparationSteps: recipe.preparationSteps || [],
+      };
+    } catch (error) {
+      const wrappedError = new Error(`Failed to get recipe: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async addRecipe({ name, note, ingredients, preparationSteps, servings, sourceName, sourceUrl, cookTime, prepTime, rating, nutritionalInfo, scaleFactor }) {
+    await this.ensureAuthenticated();
+
+    if (!name) {
+      throw new Error('Recipe name is required');
+    }
+
+    try {
+      const recipeOptions = { name };
+      if (note) recipeOptions.note = note;
+      if (servings) recipeOptions.servings = servings;
+      if (sourceName) recipeOptions.sourceName = sourceName;
+      if (sourceUrl) recipeOptions.sourceUrl = sourceUrl;
+      if (cookTime) recipeOptions.cookTime = cookTime;
+      if (prepTime) recipeOptions.prepTime = prepTime;
+      if (rating) recipeOptions.rating = rating;
+      if (nutritionalInfo) recipeOptions.nutritionalInfo = nutritionalInfo;
+      if (scaleFactor) recipeOptions.scaleFactor = scaleFactor;
+      if (preparationSteps) recipeOptions.preparationSteps = preparationSteps;
+      if (ingredients) {
+        recipeOptions.ingredients = ingredients.map(ing => ({
+          rawIngredient: ing.rawIngredient || null,
+          name: ing.name || null,
+          quantity: ing.quantity || null,
+          note: ing.note || null,
+        }));
+      }
+
+      const recipe = await this.client.createRecipe(recipeOptions);
+      await recipe.save();
+
+      console.error(`Added recipe: ${recipe.name}`);
+      return { identifier: recipe.identifier, name: recipe.name };
+    } catch (error) {
+      const wrappedError = new Error(`Failed to add recipe "${name}": ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async getCalendarEvents({ startDate, endDate, includeFuture } = {}) {
+    await this.ensureAuthenticated();
+
+    try {
+      const events = await this.client.getMealPlanningCalendarEvents();
+
+      const today = new Date().toISOString().slice(0, 10);
+      const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const start = startDate || defaultStart;
+      const end = endDate || (includeFuture ? '9999-12-31' : today);
+
+      const filtered = events
+        .filter(e => {
+          const d = e.date.toISOString().slice(0, 10);
+          return d >= start && d <= end;
+        })
+        .sort((a, b) => a.date - b.date);
+
+      return filtered.map(e => ({
+        identifier: e.identifier,
+        date: e.date.toISOString().slice(0, 10),
+        dayOfWeek: e.date.toLocaleDateString('en-US', { weekday: 'short' }),
+        title: e.recipe?.name || e.title || '(untitled)',
+        recipeId: e.recipeId || null,
+        details: e.details || null,
+      }));
+    } catch (error) {
+      const wrappedError = new Error(`Failed to get calendar events: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async scheduleMeal(dateStr, recipeIdentifier) {
+    await this.ensureAuthenticated();
+
+    try {
+      // Look up recipe by name or UUID (reuse existing logic)
+      const recipes = await this.client.getRecipes();
+      const recipe = recipes.find(r =>
+        r.identifier === recipeIdentifier ||
+        r.name.toLowerCase() === recipeIdentifier.toLowerCase()
+      );
+
+      if (!recipe) {
+        throw new Error(`Recipe "${recipeIdentifier}" not found`);
+      }
+
+      const event = await this.client.createEvent({
+        date: new Date(dateStr + 'T12:00:00'),
+        recipeId: recipe.identifier,
+      });
+      await event.save();
+
+      const dateObj = new Date(dateStr + 'T12:00:00');
+      const formatted = dateObj.toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+
+      console.error(`Scheduled "${recipe.name}" on ${formatted}`);
+      return { recipeName: recipe.name, date: dateStr, formatted };
+    } catch (error) {
+      const wrappedError = new Error(`Failed to schedule meal: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async scheduleNote(dateStr, title) {
+    await this.ensureAuthenticated();
+
+    try {
+      const event = await this.client.createEvent({
+        date: new Date(dateStr + 'T12:00:00'),
+        title,
+      });
+      await event.save();
+
+      const dateObj = new Date(dateStr + 'T12:00:00');
+      const formatted = dateObj.toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+
+      console.error(`Noted "${title}" on ${formatted}`);
+      return { title, date: dateStr, formatted };
+    } catch (error) {
+      const wrappedError = new Error(`Failed to schedule note: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async clearCalendarRange(startDate, endDate) {
+    await this.ensureAuthenticated();
+
+    try {
+      const events = await this.client.getMealPlanningCalendarEvents();
+
+      const toDelete = events.filter(e => {
+        const d = e.date.toISOString().slice(0, 10);
+        return d >= startDate && d <= endDate;
+      });
+
+      for (const event of toDelete) {
+        await event.delete();
+      }
+
+      console.error(`Cleared ${toDelete.length} calendar events between ${startDate} and ${endDate}`);
+      return { count: toDelete.length, startDate, endDate };
+    } catch (error) {
+      const wrappedError = new Error(`Failed to clear calendar range: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
   }
 
   async disconnect() {
