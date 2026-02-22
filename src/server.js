@@ -204,22 +204,24 @@ server.registerTool("shopping", {
   description: `Manage AnyList shopping lists and items. Actions:
 - list_lists: Show all lists with item counts
 - list_items: Show items on a list (grouped by category)
-- add_item: Add an item to a list
+- add_item: Add an item to a list (optionally with category)
 - check_item: Check off (complete) an item
 - delete_item: Permanently remove an item from a list
 - get_favorites: Get favorite items for a list
-- get_recents: Get recently added items for a list`,
+- get_recents: Get recently added items for a list
+- list_categories: Show available categories for a list`,
   inputSchema: {
-    action: z.enum(["list_lists", "list_items", "add_item", "check_item", "delete_item", "get_favorites", "get_recents"]).describe("The shopping action to perform"),
+    action: z.enum(["list_lists", "list_items", "add_item", "check_item", "delete_item", "get_favorites", "get_recents", "list_categories"]).describe("The shopping action to perform"),
     list_name: z.string().optional().describe("Name of the list (defaults to ANYLIST_LIST_NAME env var)"),
     name: z.string().optional().describe("Item name (required for add_item, check_item, delete_item)"),
     quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
     notes: z.string().optional().describe("Notes for the item (add_item only)"),
+    category: z.string().optional().describe("Category name for the item (add_item only, e.g. 'Dairy', 'Produce'). Use list_categories to see available options."),
     include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
     include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
   }
 }, async (params) => {
-  const { action, list_name, name, quantity, notes, include_checked, include_notes } = params;
+  const { action, list_name, name, quantity, notes, category, include_checked, include_notes } = params;
   try {
     switch (action) {
       case "list_lists": {
@@ -269,8 +271,15 @@ server.registerTool("shopping", {
           itemName = await elicitRequiredField("name", "What item would you like to add?");
         }
         await anylistClient.connect(list_name);
-        await anylistClient.addItem(itemName, quantity || 1, notes || null);
-        return textResponse(`Successfully added "${itemName}" to list "${anylistClient.targetList.name}"`);
+        await anylistClient.addItem(itemName, quantity || 1, notes || null, category || null);
+        const catSuffix = category ? ` in category "${category}"` : '';
+        return textResponse(`Successfully added "${itemName}" to list "${anylistClient.targetList.name}"${catSuffix}`);
+      }
+      case "list_categories": {
+        await anylistClient.connect(list_name);
+        const categories = anylistClient.getCategories();
+        if (categories.length === 0) return textResponse("No categories found.");
+        return textResponse(`Available categories (${categories.length}):\n${categories.map(c => `- ${c}`).join('\n')}`);
       }
       case "check_item": {
         let itemName = name;
@@ -511,6 +520,7 @@ server.registerTool("meal_plan", {
           if (e.recipeName) parts.push(`📖 ${e.recipeName}`);
           if (e.labelName) parts.push(`[${e.labelName}]`);
           if (e.details) parts.push(`— ${e.details}`);
+          if (e.identifier) parts.push(`(id: ${e.identifier})`);
           return parts.join(' ');
         }).join('\n');
         return textResponse(`Meal Plan (${events.length} events):\n${list}`);

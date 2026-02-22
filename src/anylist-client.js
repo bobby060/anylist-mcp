@@ -97,8 +97,77 @@ class AnyListClient {
     }));
   }
 
-  // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null) {
+    /**
+   * Get available categories by inspecting existing items' categoryMatchId values.
+   * AnyList uses slug-based categoryMatchIds (e.g. 'dairy', 'produce', 'bakery').
+   */
+  getCategories() {
+    if (!this.targetList) return [];
+    // Collect unique categoryMatchIds from existing items
+    const slugs = new Set();
+    for (const item of (this.targetList.items || [])) {
+      if (item._categoryMatchId) {
+        slugs.add(item._categoryMatchId);
+      }
+    }
+    // Convert slugs to display names and return sorted
+    return [...slugs].map(slug => this._slugToDisplayName(slug)).sort();
+  }
+
+  /**
+   * Convert a category slug to a display name.
+   * e.g. 'dairy' → 'Dairy', 'frozen-foods' → 'Frozen Foods'
+   */
+  _slugToDisplayName(slug) {
+    if (!slug) return 'Other';
+    return slug.split('-').map(word => {
+      if (['and', 'or', 'the', 'of'].includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+  }
+
+  /**
+   * Convert a display name to a category slug.
+   * e.g. 'Dairy' → 'dairy', 'Frozen Foods' → 'frozen-foods'
+   */
+  _displayNameToSlug(name) {
+    if (!name) return null;
+    return name.toLowerCase().replace(/\s+/g, '-');
+  }
+
+  /**
+   * Resolve a category name to its slug for categoryMatchId.
+   * Accepts display names ('Dairy'), slugs ('dairy'), or partial matches.
+   * Returns null if not found.
+   */
+  _resolveCategoryId(categoryName) {
+    if (!categoryName) return null;
+
+    const inputSlug = this._displayNameToSlug(categoryName);
+
+    // Get all known slugs from items
+    const knownSlugs = new Set();
+    for (const item of (this.targetList?.items || [])) {
+      if (item._categoryMatchId) {
+        knownSlugs.add(item._categoryMatchId);
+      }
+    }
+
+    // Exact match
+    if (knownSlugs.has(inputSlug)) return inputSlug;
+
+    // Try partial match (e.g. 'frozen' matches 'frozen-foods')
+    for (const slug of knownSlugs) {
+      if (slug.includes(inputSlug) || inputSlug.includes(slug)) return slug;
+    }
+
+    // If not found in existing items, still use the slug
+    // (AnyList may accept new category slugs)
+    return inputSlug;
+  }
+
+// TODO: Update quantity
+  async addItem(itemName, quantity = 1, notes = null, category = null) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -109,6 +178,13 @@ class AnyListClient {
       // First, check if item already exists
       const existingItem = this.targetList.getItemByName(itemName);
 
+      // Resolve category name to ID if provided
+      const categoryMatchId = this._resolveCategoryId(category);
+      if (category && !categoryMatchId) {
+        const available = this.getCategories();
+        throw new Error(`Unknown category "${category}". Available categories: ${available.join(', ')}`);
+      }
+
       if (existingItem) {
         // Item exists - check if it's checked (completed)
         if (existingItem.checked) {
@@ -117,6 +193,9 @@ class AnyListClient {
           existingItem.quantity = quantity; // Update quantity if needed
           if (notes !== null) {
             existingItem.details = notes;
+          }
+          if (categoryMatchId) {
+            existingItem._categoryMatchId = categoryMatchId;
           }
 
           console.error(`Unchecked existing item: ${existingItem.name}`);
@@ -129,6 +208,9 @@ class AnyListClient {
           if (notes !== null) {
             existingItem.details = notes;
           }
+          if (categoryMatchId) {
+            existingItem._categoryMatchId = categoryMatchId;
+          }
 
           existingItem.save();
         }
@@ -140,6 +222,9 @@ class AnyListClient {
         }
 
         const newItem = this.client.createItem(itemOptions);
+        if (categoryMatchId) {
+          newItem._categoryMatchId = categoryMatchId;
+        }
         await this.targetList.addItem(newItem);
 
         // Set quantity and notes after adding (can't be done via _encode)
@@ -153,7 +238,7 @@ class AnyListClient {
           await newItem.save();
         }
 
-        console.error(`Added new item: ${newItem.name}`);
+        console.error(`Added new item: ${newItem.name}${category ? ` (${category})` : ''}`);
       }
 
     } catch (error) {
