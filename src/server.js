@@ -57,24 +57,22 @@ server.registerTool("health_check", {
 // Register add_item tool
 server.registerTool("add_item", {
   title: "Add Item to Shopping List",
-  description: "Add an item to the AnyList shopping list with optional quantity, notes, and category",
+  description: "Add an item to the AnyList shopping list with optional quantity and notes",
   inputSchema: {
     name: z.string().describe("Name of the item to add"),
     quantity: z.number().min(1).optional().describe("Quantity of the item (optional, defaults to 1)"),
     notes: z.string().optional().describe("Notes to attach to the item (optional)"),
-    category: z.string().optional().describe("Category name for the item (e.g. 'Dairy', 'Produce'). Use list_categories tool to see available options."),
     list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
   }
-}, async ({ name, quantity, notes, category, list_name }) => {
+}, async ({ name, quantity, notes, list_name }) => {
   try {
     await anylistClient.connect(list_name);
-    await anylistClient.addItem(name, quantity || 1, notes || null, category || null);
-    const catSuffix = category ? ` in category "${category}"` : '';
+    await anylistClient.addItem(name, quantity || 1, notes || null);
     return {
       content: [
         {
           type: "text",
-          text: `Successfully added "${name}" to list "${anylistClient.targetList.name}"${catSuffix}`,
+          text: `Successfully added "${name}" to list "${anylistClient.targetList.name}"`,
         },
       ],
     };
@@ -86,38 +84,6 @@ server.registerTool("add_item", {
           text: `Failed to add item: ${error.message}`,
         },
       ],
-      isError: true,
-    };
-  }
-});
-
-// Register list_categories tool
-server.registerTool("list_categories", {
-  title: "List Shopping List Categories",
-  description: "Show available categories for a shopping list (e.g. Dairy, Produce, Bakery)",
-  inputSchema: {
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
-  }
-}, async ({ list_name }) => {
-  try {
-    await anylistClient.connect(list_name);
-    const categories = anylistClient.getCategories();
-    if (categories.length === 0) {
-      return {
-        content: [{ type: "text", text: "No categories found." }],
-      };
-    }
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Available categories (${categories.length}):\n${categories.map(c => `- ${c}`).join('\n')}`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to list categories: ${error.message}` }],
       isError: true,
     };
   }
