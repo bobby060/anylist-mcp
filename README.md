@@ -1,113 +1,178 @@
 # AnyList MCP Server
 
-This project provides a local server that integrates with the [AnyList](https://www.anylist.com/) shopping list service and exposes its functionality through the Model Context Protocol (MCP). This allows language models (especially Claude Desktop or Claude Code) to interact with your AnyList shopping lists. Rather than having the LLM call the AnyList API directly, this server wraps common actions (like adding or checking off items) in a way that is more intuitive for the model to use - that is, more like how a human would interact with the service.
+A local MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, meal planning, and more — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, or any MCP-compatible client.
 
-Tested on Windows with Claude Desktop, but should also work with Claude Code.
+## Architecture: Domain-Grouped Tools
 
-## Features
+Instead of 18+ individual tools, this branch organizes functionality into **5 domain-grouped tools** with an `action` parameter. This reduces tool clutter while keeping full coverage:
 
-- **Connect to AnyList:** Authenticate with your AnyList account and connect to a specific shopping list.
-- **Add Items:** Add new items to your shopping list with an optional quantity.
-- **Check Off Items:** Mark items as completed on your shopping list.
-- **List Items:** View all items on your shopping list, grouped by category.
-- **List Lists:** View all available lists in your account with unchecked item counts.
-- **Health Check:** A simple endpoint to verify that the server is running.
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `health_check` | — | Test AnyList connection |
+| `shopping` | `list_lists`, `list_items`, `add_item`, `check_item`, `delete_item`, `get_favorites`, `get_recents` | Shopping list management |
+| `recipes` | `list`, `get`, `create`, `delete` | Recipe CRUD |
+| `meal_plan` | `list_events`, `list_labels`, `create_event`, `delete_event` | Meal planning calendar |
+| `recipe_collections` | `list`, `create` | Recipe organization |
 
-Note: The API to anylist comes from a fork of [this repo](https://github.com/codetheweb/anylist) by @codetheweb. The only change I made was to remove console.info statements, since the writing to stdout causes issues with local MCP servers.
+### Lazy Loading
 
-### Prerequisites
+- **`list` actions** return summaries (name, rating, times) — fast and lightweight
+- **`get` actions** return full details (ingredients, steps) — only when you need them
 
-- [Node.js](https://nodejs.org/) (v16 or higher)
+This two-step pattern keeps responses small and lets the model decide when to drill down.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) v16+
 - An [AnyList](https://www.anylist.com/) account
 
-### Installation
+## Installation
 
-1.  **Clone the repository:**
+```bash
+git clone https://github.com/bobby060/anylist-mcp.git
+cd anylist-mcp
+npm install
+```
 
-    ```bash
-    git clone https://github.com/bobby060/anylist-mcp.git
-    cd anylist-mcp
-    ```
-2.  **Install dependencies:**
+### Environment Variables
 
-    ```bash
-    npm install
-    ```
+```bash
+cp .env.example .env
+```
 
-3.  **Set up environment variables (Only needed for running tests, debugging):**
-    Create a `.env` file in the root of the project by copying the example file:
+```env
+ANYLIST_USERNAME=your_email@example.com
+ANYLIST_PASSWORD=your_password
+ANYLIST_LIST_NAME=Groceries
+```
 
-    ```bash
-    cp .env.example .env
-    ```
+### Claude Desktop / Claude Code Configuration
 
-    Now, edit the `.env` file with your AnyList credentials and the name of the shopping list you want to use:
-
-    ```
-    # AnyList Credentials
-    ANYLIST_USERNAME=your_email@example.com
-    ANYLIST_PASSWORD=your_password
-
-    # AnyList Configuration
-    ANYLIST_LIST_NAME=Shopping List
-    ```
-
-4. **Add to Claude Code**
-    Add this json snippet to your claude desktop config file. For information about where to find this, look [here](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
-
-    ```json
-    {
-        "mcpServers": {
-            "anylist": {
-            "command": "node",
-            "args": ["/ABSOLUTE/PATH/TO/PARENT/FOLDER/weather/build/index.js"],
-            "env": {
-                "ANYLIST_USERNAME":"yourusername@youremail.com",
-                "ANYLIST_PASSWORD":"yourpassword",
-                "ANYLIST_LIST_NAME": "target_list"
-            }
-            }
-        }
+```json
+{
+  "mcpServers": {
+    "anylist": {
+      "command": "node",
+      "args": ["/absolute/path/to/anylist-mcp/src/server.js"],
+      "env": {
+        "ANYLIST_USERNAME": "you@example.com",
+        "ANYLIST_PASSWORD": "yourpassword",
+        "ANYLIST_LIST_NAME": "Groceries"
+      }
     }
-    ```
+  }
+}
+```
 
-## Available Tools
+## Usage Examples
 
-The following tools are registered with the MCP server:
+### The Action Parameter Pattern
 
--   `health_check`: Check if the server is running.
--   `add_item`: Add an item to the shopping list.
-    -   `name` (string, required): The name of the item to add.
-    -   `quantity` (number, optional): The quantity of the item.
--   `check_item`: Check off an item from the shopping list.
-    -   `name` (string, required): The name of the item to check off.
--   `list_items`: Get all items from the shopping list, grouped by category.
-    -   `include_checked` (boolean, optional): Include checked-off items (default: false).
--   `list_lists`: Get all available lists in your AnyList account.
-    -   Returns each list name with its number of unchecked items.
+Every domain tool takes an `action` enum plus action-specific parameters:
+
+```json
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Milk", "quantity": 2 } }
+```
+
+```json
+{ "name": "recipes", "arguments": { "action": "list", "search": "pasta" } }
+```
+
+```json
+{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Taco Night" } }
+```
+
+### Typical Multi-Step Interaction
+
+1. **Browse recipes** — `recipes` → `list` (get summaries)
+2. **Get details** — `recipes` → `get` with `name` (full ingredients & steps)
+3. **Plan the meal** — `meal_plan` → `create_event` with date and recipe
+4. **Add ingredients to shopping list** — `shopping` → `add_item` for each ingredient
+
+### Shopping Tool
+
+```json
+// List all shopping lists
+{ "name": "shopping", "arguments": { "action": "list_lists" } }
+
+// List items on a specific list
+{ "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
+
+// Add an item
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic" } }
+
+// Check off an item
+{ "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
+
+// Delete an item permanently
+{ "name": "shopping", "arguments": { "action": "delete_item", "name": "Eggs" } }
+```
+
+### Recipes Tool
+
+```json
+// Browse all recipes (summaries only — lazy loading)
+{ "name": "recipes", "arguments": { "action": "list" } }
+
+// Search recipes
+{ "name": "recipes", "arguments": { "action": "list", "search": "chicken" } }
+
+// Get full details (ingredients + steps)
+{ "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
+
+// Create a recipe
+{ "name": "recipes", "arguments": {
+    "action": "create",
+    "name": "Simple Pasta",
+    "ingredients": ["1 lb spaghetti", "2 cloves garlic", "1/4 cup olive oil"],
+    "steps": ["Boil pasta", "Sauté garlic", "Toss together"],
+    "servings": "4"
+} }
+```
+
+### Meal Plan Tool
+
+```json
+// View meal plan
+{ "name": "meal_plan", "arguments": { "action": "list_events" } }
+
+// Get available labels (Breakfast, Lunch, Dinner, etc.)
+{ "name": "meal_plan", "arguments": { "action": "list_labels" } }
+
+// Schedule a meal
+{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Pizza Night", "label_id": "dinner-id" } }
+```
+
+### Recipe Collections Tool
+
+```json
+// List collections
+{ "name": "recipe_collections", "arguments": { "action": "list" } }
+
+// Create a collection
+{ "name": "recipe_collections", "arguments": { "action": "create", "name": "Weeknight Dinners", "recipe_names": ["Simple Pasta"] } }
+```
 
 ## Testing
 
-The project includes unit tests for the AnyList client.
+```bash
+# Unit tests (mocked, no credentials needed)
+npm test
 
--   **Run all tests:**
+# Integration tests (requires .env with real credentials)
+npm run test:integration
+```
 
-    ```bash
-    npm test
-    ```
+## Debugging
 
--   **Run unit tests for the AnyList client:**
-
-    ```bash
-    npm run test:unit
-    ```
-
-## You can also debug via this command:
 ```bash
 npx @modelcontextprotocol/inspector node src/server.js
 ```
 
-## Contributions
-Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.
+## Contributing
 
-When adding or modifying tool calls, please ensure to add tests that cover the added functionality. This makes it easier for me to test and merge changes!
+Contributions welcome! Please add tests for new functionality.
+
+## Credits
+
+AnyList API from a fork of [anylist](https://github.com/codetheweb/anylist) by @codetheweb.
