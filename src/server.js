@@ -4,26 +4,39 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import AnyListClient from "./anylist-client.js";
 
-// Load environment variables
 dotenv.config();
 
-
-
-// Create AnyList client
 const anylistClient = new AnyListClient();
 
 const originalConsoleLog = console.log;
 console.log = console.error;
 console.info = console.error;
 
-// Create the MCP server
 const server = new McpServer({
   name: "anylist-mcp-server",
-  version: "1.1.0",
+  version: "2.0.0",
 });
 
+// Helper: standard error response
+function errorResponse(msg) {
+  return { content: [{ type: "text", text: msg }], isError: true };
+}
 
-// Register AnyList connection test tool
+// Helper: standard text response
+function textResponse(msg) {
+  return { content: [{ type: "text", text: msg }] };
+}
+
+// Helper: require params for an action
+function requireParams(params, required, action) {
+  for (const key of required) {
+    if (params[key] === undefined || params[key] === null || params[key] === "") {
+      throw new Error(`Action "${action}" requires parameter "${key}"`);
+    }
+  }
+}
+
+// ===== health_check (standalone) =====
 server.registerTool("health_check", {
   title: "AnyList Connection Test",
   description: "Test connection to AnyList and access to target shopping list",
@@ -33,619 +46,288 @@ server.registerTool("health_check", {
 }, async ({ list_name }) => {
   try {
     await anylistClient.connect(list_name);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Successfully connected to AnyList and found list: "${anylistClient.targetList.name}"`,
-        },
-      ],
-    };
+    return textResponse(`Successfully connected to AnyList and found list: "${anylistClient.targetList.name}"`);
   } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to connect to AnyList: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
+    return errorResponse(`Failed to connect to AnyList: ${error.message}`);
   }
 });
 
-// Register add_item tool
-server.registerTool("add_item", {
-  title: "Add Item to Shopping List",
-  description: "Add an item to the AnyList shopping list with optional quantity and notes",
+// ===== shopping — List & item management =====
+server.registerTool("shopping", {
+  title: "Shopping Lists & Items",
+  description: `Manage AnyList shopping lists and items. Actions:
+- list_lists: Show all lists with item counts
+- list_items: Show items on a list (grouped by category)
+- add_item: Add an item to a list
+- check_item: Check off (complete) an item
+- delete_item: Permanently remove an item from a list
+- get_favorites: Get favorite items for a list
+- get_recents: Get recently added items for a list`,
   inputSchema: {
-    name: z.string().describe("Name of the item to add"),
-    quantity: z.number().min(1).optional().describe("Quantity of the item (optional, defaults to 1)"),
-    notes: z.string().optional().describe("Notes to attach to the item (optional)"),
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
+    action: z.enum(["list_lists", "list_items", "add_item", "check_item", "delete_item", "get_favorites", "get_recents"]).describe("The shopping action to perform"),
+    list_name: z.string().optional().describe("Name of the list (defaults to ANYLIST_LIST_NAME env var)"),
+    name: z.string().optional().describe("Item name (required for add_item, check_item, delete_item)"),
+    quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
+    notes: z.string().optional().describe("Notes for the item (add_item only)"),
+    include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
+    include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
   }
-}, async ({ name, quantity, notes, list_name }) => {
+}, async (params) => {
+  const { action, list_name, name, quantity, notes, include_checked, include_notes } = params;
   try {
-    await anylistClient.connect(list_name);
-    await anylistClient.addItem(name, quantity || 1, notes || null);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Successfully added "${name}" to list "${anylistClient.targetList.name}"`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to add item: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
-
-// Register check_item tool
-server.registerTool("check_item", {
-  title: "Check Off Item from Shopping List",
-  description: "Mark an item as completed (check it off) on the AnyList shopping list",
-  inputSchema: {
-    name: z.string().describe("Name of the item to check off"),
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
-  }
-}, async ({ name, list_name }) => {
-  try {
-    await anylistClient.connect(list_name);
-    await anylistClient.removeItem(name);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Successfully checked off "${name}" from list "${anylistClient.targetList.name}"`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to check off item: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
-
-// Register delete_item tool
-server.registerTool("delete_item", {
-  title: "Delete Item from Shopping List",
-  description: "Permanently remove an item from the AnyList shopping list",
-  inputSchema: {
-    name: z.string().describe("Name of the item to delete"),
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
-  }
-}, async ({ name, list_name }) => {
-  try {
-    await anylistClient.connect(list_name);
-    await anylistClient.deleteItem(name);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Successfully deleted "${name}" from list "${anylistClient.targetList.name}"`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to delete item: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
-
-// Register list_items tool
-server.registerTool("list_items", {
-  title: "List Shopping List Items",
-  description: "Get all items from the AnyList shopping list",
-  inputSchema: {
-    include_checked: z.boolean().optional().describe("Include checked-off items (default: false)"),
-    include_notes: z.boolean().optional().describe("Include notes for each item (default: false)"),
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
-  }
-}, async ({ include_checked, include_notes, list_name }) => {
-  try {
-    await anylistClient.connect(list_name);
-    const items = await anylistClient.getItems(include_checked || false, include_notes || false);
-
-    if (items.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: include_checked
-              ? `List "${anylistClient.targetList.name}" is empty.`
-              : `No unchecked items on list "${anylistClient.targetList.name}".`,
-          },
-        ],
-      };
-    }
-
-    // Group items by category
-    const itemsByCategory = {};
-    items.forEach(item => {
-      const cat = item.category || 'other';
-      if (!itemsByCategory[cat]) {
-        itemsByCategory[cat] = [];
+    switch (action) {
+      case "list_lists": {
+        await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
+        const lists = anylistClient.getLists();
+        if (lists.length === 0) return textResponse("No lists found in the account.");
+        const output = lists.map(l => `- ${l.name} (${l.uncheckedCount} unchecked items)`).join("\n");
+        return textResponse(`Available lists (${lists.length}):\n${output}`);
       }
-      itemsByCategory[cat].push(item);
-    });
-
-    // Format output grouped by category
-    const itemList = Object.keys(itemsByCategory).sort().map(category => {
-      const categoryItems = itemsByCategory[category].map(item => {
-        const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
-        const status = item.checked ? " ✓" : "";
-        const note = item.note ? ` [${item.note}]` : "";
-        return `  - ${item.name}${qty}${status}${note}`;
-      }).join("\n");
-      return `**${category}**\n${categoryItems}`;
-    }).join("\n\n");
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Shopping list "${anylistClient.targetList.name}" (${items.length} items):\n${itemList}`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to list items: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
-
-// Register list_lists tool
-server.registerTool("list_lists", {
-  title: "List Available Lists",
-  description: "Get all available lists in the AnyList account with the number of unchecked items in each list",
-  inputSchema: {}
-}, async () => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const lists = anylistClient.getLists();
-
-    if (lists.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "No lists found in the account.",
-          },
-        ],
-      };
+      case "list_items": {
+        await anylistClient.connect(list_name);
+        const items = await anylistClient.getItems(include_checked || false, include_notes || false);
+        if (items.length === 0) {
+          return textResponse(include_checked
+            ? `List "${anylistClient.targetList.name}" is empty.`
+            : `No unchecked items on list "${anylistClient.targetList.name}".`);
+        }
+        const itemsByCategory = {};
+        items.forEach(item => {
+          const cat = item.category || 'other';
+          if (!itemsByCategory[cat]) itemsByCategory[cat] = [];
+          itemsByCategory[cat].push(item);
+        });
+        const itemList = Object.keys(itemsByCategory).sort().map(category => {
+          const categoryItems = itemsByCategory[category].map(item => {
+            const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
+            const status = item.checked ? " ✓" : "";
+            const note = item.note ? ` [${item.note}]` : "";
+            return `  - ${item.name}${qty}${status}${note}`;
+          }).join("\n");
+          return `**${category}**\n${categoryItems}`;
+        }).join("\n\n");
+        return textResponse(`Shopping list "${anylistClient.targetList.name}" (${items.length} items):\n${itemList}`);
+      }
+      case "add_item": {
+        requireParams(params, ["name"], action);
+        await anylistClient.connect(list_name);
+        await anylistClient.addItem(name, quantity || 1, notes || null);
+        return textResponse(`Successfully added "${name}" to list "${anylistClient.targetList.name}"`);
+      }
+      case "check_item": {
+        requireParams(params, ["name"], action);
+        await anylistClient.connect(list_name);
+        await anylistClient.removeItem(name);
+        return textResponse(`Successfully checked off "${name}" from list "${anylistClient.targetList.name}"`);
+      }
+      case "delete_item": {
+        requireParams(params, ["name"], action);
+        await anylistClient.connect(list_name);
+        await anylistClient.deleteItem(name);
+        return textResponse(`Successfully deleted "${name}" from list "${anylistClient.targetList.name}"`);
+      }
+      case "get_favorites": {
+        await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
+        const items = await anylistClient.getFavoriteItems(list_name);
+        if (items.length === 0) return textResponse(`No favorite items for list "${anylistClient.targetList.name}".`);
+        const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
+        return textResponse(`Favorite items for "${anylistClient.targetList.name}" (${items.length}):\n${list}`);
+      }
+      case "get_recents": {
+        await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
+        const items = await anylistClient.getRecentItems(list_name);
+        if (items.length === 0) return textResponse(`No recent items for list "${anylistClient.targetList.name}".`);
+        const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
+        return textResponse(`Recent items for "${anylistClient.targetList.name}" (${items.length}):\n${list}`);
+      }
     }
-
-    const listOutput = lists.map(list => `- ${list.name} (${list.uncheckedCount} unchecked items)`).join("\n");
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Available lists (${lists.length}):\n${listOutput}`,
-        },
-      ],
-    };
   } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Failed to list lists: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
+    return errorResponse(`Shopping ${action} failed: ${error.message}`);
   }
 });
 
-// Register get_favorites tool
-server.registerTool("get_favorites", {
-  title: "Get Favorite Items",
-  description: "Get favorite items for a shopping list",
+// ===== recipes — Recipe CRUD =====
+server.registerTool("recipes", {
+  title: "Recipes",
+  description: `Manage AnyList recipes. Actions:
+- list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
+- get: Get full recipe details (ingredients, steps) by name
+- create: Create a new recipe
+- delete: Delete a recipe by name`,
   inputSchema: {
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
+    action: z.enum(["list", "get", "create", "delete"]).describe("The recipe action to perform"),
+    name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
+    search: z.string().optional().describe("Search query to filter recipes (list only)"),
+    ingredients: z.array(z.string()).optional().describe("Ingredient strings, e.g. '2 cups flour' (create only)"),
+    steps: z.array(z.string()).optional().describe("Preparation steps in order (create only)"),
+    note: z.string().optional().describe("Recipe notes (create only)"),
+    source_name: z.string().optional().describe("Source name (create only)"),
+    source_url: z.string().optional().describe("Source URL (create only)"),
+    prep_time: z.number().optional().describe("Prep time in minutes (create only)"),
+    cook_time: z.number().optional().describe("Cook time in minutes (create only)"),
+    servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create only)"),
   }
-}, async ({ list_name }) => {
+}, async (params) => {
+  const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings } = params;
   try {
-    await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
-    const items = await anylistClient.getFavoriteItems(list_name);
-
-    if (items.length === 0) {
-      return {
-        content: [{ type: "text", text: `No favorite items for list "${anylistClient.targetList.name}".` }],
-      };
+    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
+    switch (action) {
+      case "list": {
+        const recipes = await anylistClient.getRecipes(search || null);
+        if (recipes.length === 0) return textResponse(search ? `No recipes found matching "${search}".` : "No recipes found.");
+        const list = recipes.map(r => {
+          const parts = [`- **${r.name}**`];
+          if (r.rating) parts.push(`⭐${r.rating}`);
+          if (r.prepTime) parts.push(`prep: ${r.prepTime}min`);
+          if (r.cookTime) parts.push(`cook: ${r.cookTime}min`);
+          if (r.servings) parts.push(`serves: ${r.servings}`);
+          return parts.join(' | ');
+        }).join('\n');
+        return textResponse(`Recipes (${recipes.length}):\n${list}`);
+      }
+      case "get": {
+        requireParams(params, ["name"], action);
+        const recipe = await anylistClient.getRecipeDetails(name);
+        let text = `# ${recipe.name}\n\n`;
+        if (recipe.sourceName) text += `Source: ${recipe.sourceName}\n`;
+        if (recipe.sourceUrl) text += `URL: ${recipe.sourceUrl}\n`;
+        if (recipe.rating) text += `Rating: ${'⭐'.repeat(recipe.rating)}\n`;
+        if (recipe.prepTime) text += `Prep: ${recipe.prepTime} min\n`;
+        if (recipe.cookTime) text += `Cook: ${recipe.cookTime} min\n`;
+        if (recipe.servings) text += `Servings: ${recipe.servings}\n`;
+        if (recipe.note) text += `\nNotes: ${recipe.note}\n`;
+        if (recipe.ingredients.length > 0) {
+          text += `\n## Ingredients\n`;
+          recipe.ingredients.forEach(i => {
+            text += `- ${i.rawIngredient || [i.quantity, i.name, i.note].filter(Boolean).join(' ')}\n`;
+          });
+        }
+        if (recipe.preparationSteps.length > 0) {
+          text += `\n## Steps\n`;
+          recipe.preparationSteps.forEach((s, idx) => { text += `${idx + 1}. ${s}\n`; });
+        }
+        return textResponse(text);
+      }
+      case "create": {
+        requireParams(params, ["name"], action);
+        const result = await anylistClient.createRecipe({
+          name,
+          ingredients: (ingredients || []).map(i => ({ rawIngredient: i })),
+          preparationSteps: steps || [],
+          note: note || null,
+          sourceName: source_name || null,
+          sourceUrl: source_url || null,
+          prepTime: prep_time || null,
+          cookTime: cook_time || null,
+          servings: servings || null,
+        });
+        return textResponse(`Created recipe "${result.name}"`);
+      }
+      case "delete": {
+        requireParams(params, ["name"], action);
+        await anylistClient.deleteRecipe(name);
+        return textResponse(`Deleted recipe "${name}"`);
+      }
     }
-
-    const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
-    return {
-      content: [{ type: "text", text: `Favorite items for "${anylistClient.targetList.name}" (${items.length}):\n${list}` }],
-    };
   } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to get favorites: ${error.message}` }],
-      isError: true,
-    };
+    return errorResponse(`Recipes ${action} failed: ${error.message}`);
   }
 });
 
-// Register get_recents tool
-server.registerTool("get_recents", {
-  title: "Get Recent Items",
-  description: "Get recently added items for a shopping list",
+// ===== meal_plan — Meal planning calendar =====
+server.registerTool("meal_plan", {
+  title: "Meal Plan",
+  description: `Manage AnyList meal planning calendar. Actions:
+- list_events: Show all meal plan events (sorted by date)
+- list_labels: Show available labels (Breakfast, Lunch, Dinner, etc.) with IDs
+- create_event: Add a meal plan event for a date
+- delete_event: Delete a meal plan event by ID`,
   inputSchema: {
-    list_name: z.string().optional().describe("Name of the list to use (defaults to ANYLIST_LIST_NAME env var)")
+    action: z.enum(["list_events", "list_labels", "create_event", "delete_event"]).describe("The meal plan action to perform"),
+    date: z.string().optional().describe("Date in YYYY-MM-DD format (required for create_event)"),
+    title: z.string().optional().describe("Event title (create_event; use this OR recipe_id)"),
+    recipe_id: z.string().optional().describe("Recipe ID to link (create_event)"),
+    label_id: z.string().optional().describe("Label ID for meal type (create_event)"),
+    details: z.string().optional().describe("Additional notes (create_event)"),
+    event_id: z.string().optional().describe("Event ID to delete (required for delete_event)"),
   }
-}, async ({ list_name }) => {
+}, async (params) => {
+  const { action, date, title, recipe_id, label_id, details, event_id } = params;
   try {
-    await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
-    const items = await anylistClient.getRecentItems(list_name);
-
-    if (items.length === 0) {
-      return {
-        content: [{ type: "text", text: `No recent items for list "${anylistClient.targetList.name}".` }],
-      };
+    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
+    switch (action) {
+      case "list_events": {
+        const events = await anylistClient.getMealPlanEvents();
+        if (events.length === 0) return textResponse("No meal plan events found.");
+        events.sort((a, b) => a.date.localeCompare(b.date));
+        const list = events.map(e => {
+          const parts = [`- **${e.date}**`];
+          if (e.title) parts.push(e.title);
+          if (e.recipeName) parts.push(`📖 ${e.recipeName}`);
+          if (e.labelName) parts.push(`[${e.labelName}]`);
+          if (e.details) parts.push(`— ${e.details}`);
+          return parts.join(' ');
+        }).join('\n');
+        return textResponse(`Meal Plan (${events.length} events):\n${list}`);
+      }
+      case "list_labels": {
+        const labels = await anylistClient.getMealPlanLabels();
+        if (labels.length === 0) return textResponse("No meal plan labels found.");
+        const list = labels.map(l => `- **${l.name}** (${l.hexColor || 'no color'}) — id: ${l.identifier}`).join('\n');
+        return textResponse(`Meal Plan Labels:\n${list}`);
+      }
+      case "create_event": {
+        requireParams(params, ["date"], action);
+        const result = await anylistClient.createMealPlanEvent({
+          date,
+          title: title || null,
+          recipeId: recipe_id || null,
+          labelId: label_id || null,
+          details: details || null,
+        });
+        return textResponse(`Created meal plan event for ${result.date}`);
+      }
+      case "delete_event": {
+        requireParams(params, ["event_id"], action);
+        await anylistClient.deleteMealPlanEvent(event_id);
+        return textResponse(`Deleted meal plan event ${event_id}`);
+      }
     }
-
-    const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
-    return {
-      content: [{ type: "text", text: `Recent items for "${anylistClient.targetList.name}" (${items.length}):\n${list}` }],
-    };
   } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to get recents: ${error.message}` }],
-      isError: true,
-    };
+    return errorResponse(`Meal plan ${action} failed: ${error.message}`);
   }
 });
 
-// ===== RECIPE TOOLS =====
-
-// Register list_recipes tool
-server.registerTool("list_recipes", {
-  title: "List Recipes",
-  description: "Browse AnyList recipes with optional search filter. Returns summaries (name, rating, times, servings).",
+// ===== recipe_collections — Recipe organization =====
+server.registerTool("recipe_collections", {
+  title: "Recipe Collections",
+  description: `Manage AnyList recipe collections. Actions:
+- list: Show all collections with recipe counts and names
+- create: Create a new collection, optionally with recipes`,
   inputSchema: {
-    search: z.string().optional().describe("Search query to filter recipes by name")
+    action: z.enum(["list", "create"]).describe("The collection action to perform"),
+    name: z.string().optional().describe("Collection name (required for create)"),
+    recipe_names: z.array(z.string()).optional().describe("Recipe names to include (create only)"),
   }
-}, async ({ search }) => {
+}, async (params) => {
+  const { action, name, recipe_names } = params;
   try {
     await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const recipes = await anylistClient.getRecipes(search || null);
-
-    if (recipes.length === 0) {
-      return {
-        content: [{ type: "text", text: search ? `No recipes found matching "${search}".` : "No recipes found." }],
-      };
+    switch (action) {
+      case "list": {
+        const collections = await anylistClient.getRecipeCollections();
+        if (collections.length === 0) return textResponse("No recipe collections found.");
+        const list = collections.map(c => `- **${c.name}** (${c.recipeCount} recipes)${c.recipeCount > 0 ? ': ' + c.recipeNames.join(', ') : ''}`).join('\n');
+        return textResponse(`Recipe Collections (${collections.length}):\n${list}`);
+      }
+      case "create": {
+        requireParams(params, ["name"], action);
+        const result = await anylistClient.createRecipeCollection(name, recipe_names || []);
+        return textResponse(`Created recipe collection "${result.name}"`);
+      }
     }
-
-    const list = recipes.map(r => {
-      const parts = [`- **${r.name}**`];
-      if (r.rating) parts.push(`⭐${r.rating}`);
-      if (r.prepTime) parts.push(`prep: ${r.prepTime}min`);
-      if (r.cookTime) parts.push(`cook: ${r.cookTime}min`);
-      if (r.servings) parts.push(`serves: ${r.servings}`);
-      return parts.join(' | ');
-    }).join('\n');
-
-    return {
-      content: [{ type: "text", text: `Recipes (${recipes.length}):\n${list}` }],
-    };
   } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to list recipes: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register get_recipe tool
-server.registerTool("get_recipe", {
-  title: "Get Recipe Details",
-  description: "Get full recipe details including ingredients and preparation steps",
-  inputSchema: {
-    name: z.string().describe("Name of the recipe to retrieve")
-  }
-}, async ({ name }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const recipe = await anylistClient.getRecipeDetails(name);
-
-    let text = `# ${recipe.name}\n\n`;
-    if (recipe.sourceName) text += `Source: ${recipe.sourceName}\n`;
-    if (recipe.sourceUrl) text += `URL: ${recipe.sourceUrl}\n`;
-    if (recipe.rating) text += `Rating: ${'⭐'.repeat(recipe.rating)}\n`;
-    if (recipe.prepTime) text += `Prep: ${recipe.prepTime} min\n`;
-    if (recipe.cookTime) text += `Cook: ${recipe.cookTime} min\n`;
-    if (recipe.servings) text += `Servings: ${recipe.servings}\n`;
-    if (recipe.note) text += `\nNotes: ${recipe.note}\n`;
-    if (recipe.ingredients.length > 0) {
-      text += `\n## Ingredients\n`;
-      recipe.ingredients.forEach(i => {
-        text += `- ${i.rawIngredient || [i.quantity, i.name, i.note].filter(Boolean).join(' ')}\n`;
-      });
-    }
-    if (recipe.preparationSteps.length > 0) {
-      text += `\n## Steps\n`;
-      recipe.preparationSteps.forEach((s, idx) => { text += `${idx + 1}. ${s}\n`; });
-    }
-
-    return {
-      content: [{ type: "text", text }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to get recipe: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register create_recipe tool
-server.registerTool("create_recipe", {
-  title: "Create Recipe",
-  description: "Create a new recipe in AnyList",
-  inputSchema: {
-    name: z.string().describe("Recipe name"),
-    ingredients: z.array(z.string()).optional().describe("Ingredient strings, e.g. '2 cups flour'"),
-    steps: z.array(z.string()).optional().describe("Preparation steps in order"),
-    note: z.string().optional().describe("Recipe notes"),
-    source_name: z.string().optional().describe("Source name"),
-    source_url: z.string().optional().describe("Source URL"),
-    prep_time: z.number().optional().describe("Prep time in minutes"),
-    cook_time: z.number().optional().describe("Cook time in minutes"),
-    servings: z.string().optional().describe("Servings, e.g. '4' or '4-6'"),
-  }
-}, async ({ name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const result = await anylistClient.createRecipe({
-      name,
-      ingredients: (ingredients || []).map(i => ({ rawIngredient: i })),
-      preparationSteps: steps || [],
-      note: note || null,
-      sourceName: source_name || null,
-      sourceUrl: source_url || null,
-      prepTime: prep_time || null,
-      cookTime: cook_time || null,
-      servings: servings || null,
-    });
-    return {
-      content: [{ type: "text", text: `Created recipe "${result.name}"` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to create recipe: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register delete_recipe tool
-server.registerTool("delete_recipe", {
-  title: "Delete Recipe",
-  description: "Delete a recipe from AnyList by name",
-  inputSchema: {
-    name: z.string().describe("Name of the recipe to delete")
-  }
-}, async ({ name }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    await anylistClient.deleteRecipe(name);
-    return {
-      content: [{ type: "text", text: `Deleted recipe "${name}"` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to delete recipe: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// ===== MEAL PLANNING TOOLS =====
-
-// Register list_meal_plan_events tool
-server.registerTool("list_meal_plan_events", {
-  title: "List Meal Plan Events",
-  description: "Show all meal plan events from the AnyList meal planning calendar, sorted by date",
-  inputSchema: {}
-}, async () => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const events = await anylistClient.getMealPlanEvents();
-
-    if (events.length === 0) {
-      return {
-        content: [{ type: "text", text: "No meal plan events found." }],
-      };
-    }
-
-    events.sort((a, b) => a.date.localeCompare(b.date));
-    const list = events.map(e => {
-      const parts = [`- **${e.date}**`];
-      if (e.title) parts.push(e.title);
-      if (e.recipeName) parts.push(`📖 ${e.recipeName}`);
-      if (e.labelName) parts.push(`[${e.labelName}]`);
-      if (e.details) parts.push(`— ${e.details}`);
-      return parts.join(' ');
-    }).join('\n');
-
-    return {
-      content: [{ type: "text", text: `Meal Plan (${events.length} events):\n${list}` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to list meal plan events: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register list_meal_plan_labels tool
-server.registerTool("list_meal_plan_labels", {
-  title: "List Meal Plan Labels",
-  description: "Show available meal plan labels (Breakfast, Lunch, Dinner, etc.) with their IDs",
-  inputSchema: {}
-}, async () => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const labels = await anylistClient.getMealPlanLabels();
-
-    if (labels.length === 0) {
-      return {
-        content: [{ type: "text", text: "No meal plan labels found." }],
-      };
-    }
-
-    const list = labels.map(l => `- **${l.name}** (${l.hexColor || 'no color'}) — id: ${l.identifier}`).join('\n');
-    return {
-      content: [{ type: "text", text: `Meal Plan Labels:\n${list}` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to list meal plan labels: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register create_meal_plan_event tool
-server.registerTool("create_meal_plan_event", {
-  title: "Create Meal Plan Event",
-  description: "Add a meal plan event to the AnyList meal planning calendar",
-  inputSchema: {
-    date: z.string().describe("Date in YYYY-MM-DD format"),
-    title: z.string().optional().describe("Event title (use this OR recipe_id)"),
-    recipe_id: z.string().optional().describe("Recipe ID to link to this event"),
-    label_id: z.string().optional().describe("Label ID for meal type (e.g. Breakfast, Lunch, Dinner)"),
-    details: z.string().optional().describe("Additional notes"),
-  }
-}, async ({ date, title, recipe_id, label_id, details }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const result = await anylistClient.createMealPlanEvent({
-      date,
-      title: title || null,
-      recipeId: recipe_id || null,
-      labelId: label_id || null,
-      details: details || null,
-    });
-    return {
-      content: [{ type: "text", text: `Created meal plan event for ${result.date}` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to create meal plan event: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register delete_meal_plan_event tool
-server.registerTool("delete_meal_plan_event", {
-  title: "Delete Meal Plan Event",
-  description: "Delete a meal plan event by its ID",
-  inputSchema: {
-    event_id: z.string().describe("ID of the meal plan event to delete")
-  }
-}, async ({ event_id }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    await anylistClient.deleteMealPlanEvent(event_id);
-    return {
-      content: [{ type: "text", text: `Deleted meal plan event ${event_id}` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to delete meal plan event: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// ===== RECIPE COLLECTION TOOLS =====
-
-// Register list_recipe_collections tool
-server.registerTool("list_recipe_collections", {
-  title: "List Recipe Collections",
-  description: "Show all recipe collections with recipe counts and names",
-  inputSchema: {}
-}, async () => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const collections = await anylistClient.getRecipeCollections();
-
-    if (collections.length === 0) {
-      return {
-        content: [{ type: "text", text: "No recipe collections found." }],
-      };
-    }
-
-    const list = collections.map(c =>
-      `- **${c.name}** (${c.recipeCount} recipes)${c.recipeCount > 0 ? ': ' + c.recipeNames.join(', ') : ''}`
-    ).join('\n');
-
-    return {
-      content: [{ type: "text", text: `Recipe Collections (${collections.length}):\n${list}` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to list recipe collections: ${error.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Register create_recipe_collection tool
-server.registerTool("create_recipe_collection", {
-  title: "Create Recipe Collection",
-  description: "Create a new recipe collection, optionally with recipes",
-  inputSchema: {
-    name: z.string().describe("Collection name"),
-    recipe_names: z.array(z.string()).optional().describe("Recipe names to include in the collection"),
-  }
-}, async ({ name, recipe_names }) => {
-  try {
-    await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
-    const result = await anylistClient.createRecipeCollection(name, recipe_names || []);
-    return {
-      content: [{ type: "text", text: `Created recipe collection "${result.name}"` }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Failed to create recipe collection: ${error.message}` }],
-      isError: true,
-    };
+    return errorResponse(`Recipe collections ${action} failed: ${error.message}`);
   }
 });
 
