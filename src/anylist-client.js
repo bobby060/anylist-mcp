@@ -170,7 +170,6 @@ class AnyListClient {
     }
 
     try {
-      // Find the item by name
       const existingItem = this.targetList.getItemByName(itemName);
 
       if (!existingItem) {
@@ -179,7 +178,6 @@ class AnyListClient {
         throw error;
       }
 
-      // Actually delete the item from the list
       await this.targetList.removeItem(existingItem);
       console.error(`Deleted item: ${existingItem.name}`);
 
@@ -281,6 +279,280 @@ class AnyListClient {
       console.error(`Failed to build category map: ${error.message}`);
     }
     return categoryMap;
+  }
+
+  // ===== RECIPES =====
+
+  async getRecipes(searchQuery = null) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipes = await this.client.getRecipes();
+      let results = recipes.map(r => ({
+        identifier: r.identifier,
+        name: r.name,
+        note: r.note || null,
+        sourceName: r.sourceName || null,
+        sourceUrl: r.sourceUrl || null,
+        rating: r.rating || null,
+        prepTime: r.prepTime || null,
+        cookTime: r.cookTime || null,
+        servings: r.servings || null,
+        ingredientCount: r.ingredients ? r.ingredients.length : 0,
+        stepCount: r.preparationSteps ? r.preparationSteps.length : 0,
+      }));
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        results = results.filter(r => r.name && r.name.toLowerCase().includes(q));
+      }
+      return results;
+    } catch (error) {
+      throw new Error(`Failed to get recipes: ${error.message}`);
+    }
+  }
+
+  async getRecipeDetails(recipeName) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipes = await this.client.getRecipes();
+      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      if (!recipe) {
+        throw new Error(`Recipe "${recipeName}" not found`);
+      }
+      return {
+        identifier: recipe.identifier,
+        name: recipe.name,
+        note: recipe.note || null,
+        sourceName: recipe.sourceName || null,
+        sourceUrl: recipe.sourceUrl || null,
+        rating: recipe.rating || null,
+        prepTime: recipe.prepTime || null,
+        cookTime: recipe.cookTime || null,
+        servings: recipe.servings || null,
+        nutritionalInfo: recipe.nutritionalInfo || null,
+        ingredients: recipe.ingredients ? recipe.ingredients.map(i => ({
+          rawIngredient: i.rawIngredient || null,
+          name: i.name || null,
+          quantity: i.quantity || null,
+          note: i.note || null,
+        })) : [],
+        preparationSteps: recipe.preparationSteps || [],
+      };
+    } catch (error) {
+      throw new Error(`Failed to get recipe details: ${error.message}`);
+    }
+  }
+
+  async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null }) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipeObj = { name };
+      if (note) recipeObj.note = note;
+      if (sourceName) recipeObj.sourceName = sourceName;
+      if (sourceUrl) recipeObj.sourceUrl = sourceUrl;
+      if (prepTime) recipeObj.prepTime = prepTime;
+      if (cookTime) recipeObj.cookTime = cookTime;
+      if (servings) recipeObj.servings = servings;
+      if (preparationSteps.length > 0) recipeObj.preparationSteps = preparationSteps;
+      if (ingredients.length > 0) {
+        recipeObj.ingredients = ingredients.map(i => ({
+          rawIngredient: typeof i === 'string' ? i : i.rawIngredient || `${i.quantity || ''} ${i.name || ''}`.trim(),
+          name: typeof i === 'string' ? i : i.name || null,
+          quantity: typeof i === 'string' ? null : i.quantity || null,
+          note: typeof i === 'string' ? null : i.note || null,
+        }));
+      }
+      const recipe = await this.client.createRecipe(recipeObj);
+      await recipe.save();
+      console.error(`Created recipe: ${recipe.name}`);
+      return { identifier: recipe.identifier, name: recipe.name };
+    } catch (error) {
+      throw new Error(`Failed to create recipe: ${error.message}`);
+    }
+  }
+
+  async deleteRecipe(recipeName) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipes = await this.client.getRecipes();
+      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      if (!recipe) {
+        throw new Error(`Recipe "${recipeName}" not found`);
+      }
+      await recipe.delete();
+      console.error(`Deleted recipe: ${recipe.name}`);
+    } catch (error) {
+      throw new Error(`Failed to delete recipe: ${error.message}`);
+    }
+  }
+
+  // ===== MEAL PLANNING =====
+
+  async getMealPlanEvents() {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const events = await this.client.getMealPlanningCalendarEvents();
+      return events.map(e => ({
+        identifier: e.identifier,
+        date: e.date instanceof Date ? e.date.toISOString().slice(0, 10) : String(e.date),
+        title: e.title || null,
+        details: e.details || null,
+        labelName: e.label ? e.label.name : null,
+        labelColor: e.label ? e.label.hexColor : null,
+        recipeName: e.recipe ? e.recipe.name : null,
+        recipeId: e.recipeId || null,
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get meal plan events: ${error.message}`);
+    }
+  }
+
+  async getMealPlanLabels() {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      await this.client.getMealPlanningCalendarEvents();
+      return (this.client.mealPlanningCalendarEventLabels || []).map(l => ({
+        identifier: l.identifier,
+        name: l.name,
+        hexColor: l.hexColor,
+        sortIndex: l.sortIndex,
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get meal plan labels: ${error.message}`);
+    }
+  }
+
+  async createMealPlanEvent({ date, title = null, recipeId = null, labelId = null, details = null }) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const eventObj = { date: new Date(date) };
+      if (title) eventObj.title = title;
+      if (recipeId) eventObj.recipeId = recipeId;
+      if (labelId) eventObj.labelId = labelId;
+      if (details) eventObj.details = details;
+      const event = await this.client.createEvent(eventObj);
+      await event.save();
+      console.error(`Created meal plan event for ${date}`);
+      return { identifier: event.identifier, date: date };
+    } catch (error) {
+      throw new Error(`Failed to create meal plan event: ${error.message}`);
+    }
+  }
+
+  async deleteMealPlanEvent(eventId) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const events = await this.client.getMealPlanningCalendarEvents();
+      const event = events.find(e => e.identifier === eventId);
+      if (!event) {
+        throw new Error(`Meal plan event "${eventId}" not found`);
+      }
+      await event.delete();
+      console.error(`Deleted meal plan event: ${eventId}`);
+    } catch (error) {
+      throw new Error(`Failed to delete meal plan event: ${error.message}`);
+    }
+  }
+
+  // ===== FAVORITES & RECENTS =====
+
+  async getFavoriteItems(listName) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      await this.connect(listName);
+      const favList = this.client.getFavoriteItemsByListId(this.targetList.identifier);
+      if (!favList || !favList.items) {
+        return [];
+      }
+      return favList.items.map(i => ({
+        name: i.name,
+        details: i.details || null,
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get favorite items: ${error.message}`);
+    }
+  }
+
+  async getRecentItems(listName) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      await this.connect(listName);
+      const items = this.client.getRecentItemsByListId(this.targetList.identifier);
+      if (!items) {
+        return [];
+      }
+      return items.map(i => ({
+        name: i.name,
+        details: i.details || null,
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get recent items: ${error.message}`);
+    }
+  }
+
+  // ===== RECIPE COLLECTIONS =====
+
+  async getRecipeCollections() {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const userData = await this.client._getUserData(true);
+      const collections = userData.recipeDataResponse.recipeCollections || [];
+      const recipes = await this.client.getRecipes();
+      return collections.map(c => ({
+        identifier: c.identifier,
+        name: c.name,
+        recipeCount: c.recipeIds ? c.recipeIds.length : 0,
+        recipeNames: (c.recipeIds || []).map(id => {
+          const r = recipes.find(r => r.identifier === id);
+          return r ? r.name : id;
+        }),
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get recipe collections: ${error.message}`);
+    }
+  }
+
+  async createRecipeCollection(name, recipeNames = []) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipeIds = [];
+      if (recipeNames.length > 0) {
+        const recipes = await this.client.getRecipes();
+        for (const rName of recipeNames) {
+          const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
+          if (r) recipeIds.push(r.identifier);
+        }
+      }
+      const collection = this.client.createRecipeCollection({ name, recipeIds });
+      await collection.save();
+      console.error(`Created recipe collection: ${name}`);
+      return { identifier: collection.identifier, name: collection.name };
+    } catch (error) {
+      throw new Error(`Failed to create recipe collection: ${error.message}`);
+    }
   }
 
   async disconnect() {
