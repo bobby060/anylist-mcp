@@ -36,6 +36,151 @@ function requireParams(params, required, action) {
   }
 }
 
+// ===== Elicitation helpers =====
+
+/**
+ * Check if the connected client supports elicitation.
+ */
+function clientSupportsElicitation() {
+  try {
+    const caps = server.server.getClientCapabilities();
+    return !!(caps && caps.elicitation);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Elicit user input or fall back to an error message.
+ * Returns the accepted content object, or throws with fallbackError.
+ * If user declines/cancels, throws with a descriptive message.
+ */
+async function elicitOrError(message, schema, fallbackError) {
+  if (!clientSupportsElicitation()) {
+    throw new Error(fallbackError);
+  }
+  const result = await server.server.elicitInput({
+    message,
+    requestedSchema: schema,
+  });
+  if (result.action === "accept" && result.content) {
+    return result.content;
+  }
+  if (result.action === "decline") {
+    throw new Error("User declined to provide input.");
+  }
+  // cancel
+  throw new Error("User cancelled the operation.");
+}
+
+/**
+ * Elicit a list selection when list_name is not provided.
+ * Returns the chosen list name.
+ */
+async function elicitListName(lists) {
+  const listNames = lists.map(l => l.name);
+  const content = await elicitOrError(
+    `Which list? Available lists:\n${listNames.map(n => `- ${n}`).join("\n")}`,
+    {
+      type: "object",
+      properties: {
+        list: { type: "string", enum: listNames, description: "The list to use" }
+      },
+      required: ["list"]
+    },
+    `Multiple lists available (${listNames.join(", ")}). Please specify a list_name.`
+  );
+  return content.list;
+}
+
+/**
+ * Elicit item disambiguation when multiple partial matches exist.
+ * Returns the chosen item name.
+ */
+async function elicitItemChoice(itemName, matchingNames) {
+  const content = await elicitOrError(
+    `Multiple items match "${itemName}". Which one did you mean?`,
+    {
+      type: "object",
+      properties: {
+        item: { type: "string", enum: matchingNames, description: "The item to select" }
+      },
+      required: ["item"]
+    },
+    `Multiple items match "${itemName}": ${matchingNames.join(", ")}. Please specify the exact item name.`
+  );
+  return content.item;
+}
+
+/**
+ * Elicit a confirmation (boolean).
+ * Returns true if confirmed, false otherwise.
+ */
+async function elicitConfirmation(message) {
+  const content = await elicitOrError(
+    message,
+    {
+      type: "object",
+      properties: {
+        confirm: { type: "boolean", description: "Confirm the action" }
+      },
+      required: ["confirm"]
+    },
+    message + " (cannot confirm without elicitation support)"
+  );
+  return content.confirm;
+}
+
+/**
+ * Elicit a missing required string field.
+ * Returns the provided value.
+ */
+async function elicitRequiredField(fieldName, message) {
+  const content = await elicitOrError(
+    message,
+    {
+      type: "object",
+      properties: {
+        [fieldName]: { type: "string", description: `The ${fieldName} to provide` }
+      },
+      required: [fieldName]
+    },
+    `Missing required parameter "${fieldName}". ${message}`
+  );
+  return content[fieldName];
+}
+
+/**
+ * Find items on the current list that partially match a name (case-insensitive).
+ */
+function findPartialMatches(itemName) {
+  const items = anylistClient.targetList.items || [];
+  const lower = itemName.toLowerCase();
+  return items
+    .filter(i => !i.checked && i.name.toLowerCase().includes(lower))
+    .map(i => i.name);
+}
+
+/**
+ * Resolve an item name: exact match first, then partial match with disambiguation.
+ */
+async function resolveItemName(itemName) {
+  // Try exact match first
+  const exact = anylistClient.targetList.getItemByName(itemName);
+  if (exact) return itemName;
+
+  // Try partial matches
+  const matches = findPartialMatches(itemName);
+  if (matches.length === 0) {
+    throw new Error(`Item "${itemName}" not found in list`);
+  }
+  if (matches.length === 1) {
+    return matches[0];
+  }
+  // Multiple matches — elicit
+  return await elicitItemChoice(itemName, matches);
+}
+
 // ===== health_check (standalone) =====
 server.registerTool("health_check", {
   title: "AnyList Connection Test",
@@ -84,7 +229,16 @@ server.registerTool("shopping", {
         return textResponse(`Available lists (${lists.length}):\n${output}`);
       }
       case "list_items": {
-        await anylistClient.connect(list_name);
+        // Elicit list name if not provided and multiple lists exist
+        let resolvedListName = list_name;
+        if (!resolvedListName && !process.env.ANYLIST_LIST_NAME) {
+          await anylistClient.connect(null);
+          const lists = anylistClient.getLists();
+          if (lists.length > 1) {
+            resolvedListName = await elicitListName(lists);
+          }
+        }
+        await anylistClient.connect(resolvedListName);
         const items = await anylistClient.getItems(include_checked || false, include_notes || false);
         if (items.length === 0) {
           return textResponse(include_checked
@@ -109,22 +263,33 @@ server.registerTool("shopping", {
         return textResponse(`Shopping list "${anylistClient.targetList.name}" (${items.length} items):\n${itemList}`);
       }
       case "add_item": {
-        requireParams(params, ["name"], action);
+        let itemName = name;
+        if (!itemName) {
+          itemName = await elicitRequiredField("name", "What item would you like to add?");
+        }
         await anylistClient.connect(list_name);
-        await anylistClient.addItem(name, quantity || 1, notes || null);
-        return textResponse(`Successfully added "${name}" to list "${anylistClient.targetList.name}"`);
+        await anylistClient.addItem(itemName, quantity || 1, notes || null);
+        return textResponse(`Successfully added "${itemName}" to list "${anylistClient.targetList.name}"`);
       }
       case "check_item": {
-        requireParams(params, ["name"], action);
+        let itemName = name;
+        if (!itemName) {
+          itemName = await elicitRequiredField("name", "What item would you like to check off?");
+        }
         await anylistClient.connect(list_name);
-        await anylistClient.removeItem(name);
-        return textResponse(`Successfully checked off "${name}" from list "${anylistClient.targetList.name}"`);
+        const resolvedCheck = await resolveItemName(itemName);
+        await anylistClient.removeItem(resolvedCheck);
+        return textResponse(`Successfully checked off "${resolvedCheck}" from list "${anylistClient.targetList.name}"`);
       }
       case "delete_item": {
-        requireParams(params, ["name"], action);
+        let itemName = name;
+        if (!itemName) {
+          itemName = await elicitRequiredField("name", "What item would you like to delete?");
+        }
         await anylistClient.connect(list_name);
-        await anylistClient.deleteItem(name);
-        return textResponse(`Successfully deleted "${name}" from list "${anylistClient.targetList.name}"`);
+        const resolvedDelete = await resolveItemName(itemName);
+        await anylistClient.deleteItem(resolvedDelete);
+        return textResponse(`Successfully deleted "${resolvedDelete}" from list "${anylistClient.targetList.name}"`);
       }
       case "get_favorites": {
         await anylistClient.connect(list_name || process.env.ANYLIST_LIST_NAME || null);
@@ -186,8 +351,11 @@ server.registerTool("recipes", {
         return textResponse(`Recipes (${recipes.length}):\n${list}`);
       }
       case "get": {
-        requireParams(params, ["name"], action);
-        const recipe = await anylistClient.getRecipeDetails(name);
+        let getRecipeName = name;
+        if (!getRecipeName) {
+          getRecipeName = await elicitRequiredField("name", "Which recipe would you like to view?");
+        }
+        const recipe = await anylistClient.getRecipeDetails(getRecipeName);
         let text = `# ${recipe.name}\n\n`;
         if (recipe.sourceName) text += `Source: ${recipe.sourceName}\n`;
         if (recipe.sourceUrl) text += `URL: ${recipe.sourceUrl}\n`;
@@ -209,9 +377,23 @@ server.registerTool("recipes", {
         return textResponse(text);
       }
       case "create": {
-        requireParams(params, ["name"], action);
+        let recipeName = name;
+        if (!recipeName) {
+          recipeName = await elicitRequiredField("name", "What should the recipe be called?");
+        }
+        // Check if recipe already exists
+        const existingRecipes = await anylistClient.getRecipes(recipeName);
+        const exactMatch = existingRecipes.find(r => r.name.toLowerCase() === recipeName.toLowerCase());
+        if (exactMatch) {
+          const confirmed = await elicitConfirmation(`Recipe "${exactMatch.name}" already exists. Overwrite?`);
+          if (!confirmed) {
+            return textResponse(`Cancelled — recipe "${exactMatch.name}" was not overwritten.`);
+          }
+          // Delete existing before recreating
+          await anylistClient.deleteRecipe(exactMatch.name);
+        }
         const result = await anylistClient.createRecipe({
-          name,
+          name: recipeName,
           ingredients: (ingredients || []).map(i => ({ rawIngredient: i })),
           preparationSteps: steps || [],
           note: note || null,
@@ -224,9 +406,12 @@ server.registerTool("recipes", {
         return textResponse(`Created recipe "${result.name}"`);
       }
       case "delete": {
-        requireParams(params, ["name"], action);
-        await anylistClient.deleteRecipe(name);
-        return textResponse(`Deleted recipe "${name}"`);
+        let deleteRecipeName = name;
+        if (!deleteRecipeName) {
+          deleteRecipeName = await elicitRequiredField("name", "Which recipe would you like to delete?");
+        }
+        await anylistClient.deleteRecipe(deleteRecipeName);
+        return textResponse(`Deleted recipe "${deleteRecipeName}"`);
       }
     }
   } catch (error) {
@@ -277,7 +462,9 @@ server.registerTool("meal_plan", {
         return textResponse(`Meal Plan Labels:\n${list}`);
       }
       case "create_event": {
-        requireParams(params, ["date"], action);
+        if (!params.date) {
+          params.date = await elicitRequiredField("date", "What date for the meal plan event? (YYYY-MM-DD)");
+        }
         const result = await anylistClient.createMealPlanEvent({
           date,
           title: title || null,
@@ -288,7 +475,9 @@ server.registerTool("meal_plan", {
         return textResponse(`Created meal plan event for ${result.date}`);
       }
       case "delete_event": {
-        requireParams(params, ["event_id"], action);
+        if (!params.event_id) {
+          params.event_id = await elicitRequiredField("event_id", "Which event ID should be deleted?");
+        }
         await anylistClient.deleteMealPlanEvent(event_id);
         return textResponse(`Deleted meal plan event ${event_id}`);
       }
@@ -321,8 +510,11 @@ server.registerTool("recipe_collections", {
         return textResponse(`Recipe Collections (${collections.length}):\n${list}`);
       }
       case "create": {
-        requireParams(params, ["name"], action);
-        const result = await anylistClient.createRecipeCollection(name, recipe_names || []);
+        let collectionName = name;
+        if (!collectionName) {
+          collectionName = await elicitRequiredField("name", "What should the collection be called?");
+        }
+        const result = await anylistClient.createRecipeCollection(collectionName, recipe_names || []);
         return textResponse(`Created recipe collection "${result.name}"`);
       }
     }
