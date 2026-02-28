@@ -1,0 +1,9 @@
+.env
+.env.example
+.git
+.gitignore
+.gitmodules
+test/
+test-anylist-client-unit.js
+API-DISCOVERY.md
+*.mcpb

@@ -17,3 +17,6 @@ yarn-debug.log
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# generated mcpb files
+*.mcpb
