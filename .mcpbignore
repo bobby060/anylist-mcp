@@ -3,7 +3,6 @@
 .git
 .gitignore
 .gitmodules
-node_modules
 test/
 test-anylist-client-unit.js
 API-DISCOVERY.md
