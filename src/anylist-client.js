@@ -1,5 +1,6 @@
 import AnyList from '../anylist-js/lib/index.js';
 import Item from '../anylist-js/lib/item.js';
+import { normalizeRecipe } from './recipe-normalizer.js';
 
 // Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema
 Item.prototype._encode = function() {
@@ -343,6 +344,84 @@ class AnyListClient {
       };
     } catch (error) {
       throw new Error(`Failed to get recipe details: ${error.message}`);
+    }
+  }
+
+  async importRecipeFromUrl(url) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    // Try AnyList's native web import first
+    let nativeError = null;
+    try {
+      const result = await this.client.client.post('data/recipes/web-import?url=' + encodeURIComponent(url));
+      const decoded = this.client.protobuf.PBRecipeWebImportResponse.decode(result.body);
+
+      if (decoded.statusCode === 0 && decoded.recipe) {
+        // Native import succeeded
+        const recipe = await this.client.createRecipe({
+          name: decoded.recipe.name,
+          note: decoded.recipe.note || null,
+          sourceName: decoded.recipe.sourceName || null,
+          sourceUrl: decoded.recipe.sourceUrl || url,
+          prepTime: decoded.recipe.prepTime || null,
+          cookTime: decoded.recipe.cookTime || null,
+          servings: decoded.recipe.servings || null,
+          nutritionalInfo: decoded.recipe.nutritionalInfo || null,
+          rating: decoded.recipe.rating || null,
+          ingredients: decoded.recipe.ingredients || [],
+          preparationSteps: decoded.recipe.preparationSteps || [],
+        });
+        recipe.isNewRecipeFromWebImport = true;
+        await recipe.save();
+        console.error(`Imported recipe from URL (native): ${recipe.name}`);
+
+        return {
+          name: recipe.name,
+          identifier: recipe.identifier,
+          ingredientCount: decoded.recipe.ingredients?.length || 0,
+          stepCount: decoded.recipe.preparationSteps?.length || 0,
+          source: decoded.recipe.sourceName || null,
+          sourceUrl: decoded.recipe.sourceUrl || url,
+          isPremiumUser: decoded.isPremiumUser,
+          freeImportsRemaining: decoded.freeRecipeImportsRemainingCount,
+          method: 'native',
+        };
+      }
+      nativeError = decoded.siteSpecificHelpText || 'Native import returned no recipe';
+    } catch (error) {
+      nativeError = error.message;
+    }
+
+    // Fallback: use normalizer
+    console.error(`Native import failed (${nativeError}), trying normalizer fallback...`);
+    try {
+      const normalized = await normalizeRecipe({ url });
+      const created = await this.createRecipe({
+        name: normalized.name,
+        ingredients: normalized.ingredients,
+        preparationSteps: normalized.preparationSteps,
+        note: normalized.note,
+        sourceName: normalized.sourceName,
+        sourceUrl: normalized.sourceUrl || url,
+        prepTime: normalized.prepTime,
+        cookTime: normalized.cookTime,
+        servings: normalized.servings,
+      });
+      console.error(`Imported recipe from URL (normalizer fallback): ${created.name}`);
+
+      return {
+        name: created.name,
+        identifier: created.identifier,
+        ingredientCount: normalized.ingredients.length,
+        stepCount: normalized.preparationSteps.length,
+        source: normalized.sourceName || null,
+        sourceUrl: normalized.sourceUrl || url,
+        method: 'normalizer',
+      };
+    } catch (fallbackError) {
+      throw new Error(`Failed to import recipe from URL: native import failed (${nativeError}), normalizer also failed (${fallbackError.message})`);
     }
   }
 

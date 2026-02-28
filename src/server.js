@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import dotenv from "dotenv";
 import AnyListClient from "./anylist-client.js";
+import { normalizeRecipe } from "./recipe-normalizer.js";
 
 dotenv.config();
 
@@ -318,9 +319,11 @@ server.registerTool("recipes", {
 - list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
 - get: Get full recipe details (ingredients, steps) by name
 - create: Create a new recipe
-- delete: Delete a recipe by name`,
+- delete: Delete a recipe by name
+- import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)
+- normalize: Preview/parse a recipe from a URL or raw text without saving (set save=true to also save)`,
   inputSchema: {
-    action: z.enum(["list", "get", "create", "delete"]).describe("The recipe action to perform"),
+    action: z.enum(["list", "get", "create", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
     name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
     search: z.string().optional().describe("Search query to filter recipes (list only)"),
     ingredients: z.array(z.string()).optional().describe("Ingredient strings, e.g. '2 cups flour' (create only)"),
@@ -331,9 +334,12 @@ server.registerTool("recipes", {
     prep_time: z.number().optional().describe("Prep time in minutes (create only)"),
     cook_time: z.number().optional().describe("Cook time in minutes (create only)"),
     servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create only)"),
+    url: z.string().optional().describe("URL to import recipe from (import_url, normalize)"),
+    text: z.string().optional().describe("Raw recipe text to parse (normalize only)"),
+    save: z.boolean().optional().describe("If true, also save normalized recipe to AnyList (normalize only, default false)"),
   }
 }, async (params) => {
-  const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings } = params;
+  const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
   try {
     await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
     switch (action) {
@@ -412,6 +418,60 @@ server.registerTool("recipes", {
         }
         await anylistClient.deleteRecipe(deleteRecipeName);
         return textResponse(`Deleted recipe "${deleteRecipeName}"`);
+      }
+      case "import_url": {
+        let importUrl = url;
+        if (!importUrl) {
+          importUrl = await elicitRequiredField("url", "What URL would you like to import a recipe from?");
+        }
+        const result = await anylistClient.importRecipeFromUrl(importUrl);
+        let importText = `Imported recipe "${result.name}"\n`;
+        importText += `- ${result.ingredientCount} ingredients, ${result.stepCount} steps\n`;
+        if (result.source) importText += `- Source: ${result.source}\n`;
+        if (result.sourceUrl) importText += `- URL: ${result.sourceUrl}\n`;
+        if (result.method) importText += `- Method: ${result.method}\n`;
+        return textResponse(importText);
+      }
+      case "normalize": {
+        if (!url && !recipeText) {
+          throw new Error('Action "normalize" requires either "url" or "text" parameter');
+        }
+        const input = {};
+        if (url) input.url = url;
+        if (recipeText) input.text = recipeText;
+        const normalized = await normalizeRecipe(input);
+
+        let output = `# ${normalized.name}\n\n`;
+        if (normalized.sourceName) output += `Source: ${normalized.sourceName}\n`;
+        if (normalized.sourceUrl) output += `URL: ${normalized.sourceUrl}\n`;
+        if (normalized.prepTime) output += `Prep: ${normalized.prepTime}\n`;
+        if (normalized.cookTime) output += `Cook: ${normalized.cookTime}\n`;
+        if (normalized.servings) output += `Servings: ${normalized.servings}\n`;
+        if (normalized.note) output += `Note: ${normalized.note}\n`;
+
+        output += `\n## Ingredients (${normalized.ingredients.length})\n`;
+        normalized.ingredients.forEach(i => { output += `- ${i.rawIngredient}\n`; });
+
+        output += `\n## Steps (${normalized.preparationSteps.length})\n`;
+        normalized.preparationSteps.forEach((s, idx) => { output += `${idx + 1}. ${s}\n`; });
+
+        if (saveRecipe) {
+          await anylistClient.connect(process.env.ANYLIST_LIST_NAME || null);
+          const created = await anylistClient.createRecipe({
+            name: normalized.name,
+            ingredients: normalized.ingredients,
+            preparationSteps: normalized.preparationSteps,
+            note: normalized.note,
+            sourceName: normalized.sourceName,
+            sourceUrl: normalized.sourceUrl,
+            prepTime: normalized.prepTime,
+            cookTime: normalized.cookTime,
+            servings: normalized.servings,
+          });
+          output += `\n✅ Saved to AnyList as "${created.name}"`;
+        }
+
+        return textResponse(output);
       }
     }
   } catch (error) {
