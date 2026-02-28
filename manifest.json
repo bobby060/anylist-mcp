@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "anylist-mcp",
   "display_name": "AnyList",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "MCP server for AnyList — manage shopping lists, recipes, meal planning, and more",
   "long_description": "# AnyList MCP Server\n\nA full-featured MCP server for [AnyList](https://www.anylist.com/) that lets Claude manage your shopping lists, recipes, meal plans, and recipe collections.\n\n## Capabilities\n\n- **Shopping Lists** — View all lists, list items by category, add items, check off items, delete items, view favorites and recently added items\n- **Recipes** — Browse, search, view full details (ingredients & steps), create new recipes, and delete recipes\n- **Meal Planning** — View meal plan events, list meal labels (Breakfast/Lunch/Dinner), create and delete meal plan events\n- **Recipe Collections** — View and create recipe collections\n- **Health Check** — Verify connection to AnyList\n\nAuthenticate with your AnyList email and password. Optionally set a default shopping list name.",
   "author": {
