@@ -1,200 +1,223 @@
 # AnyList MCP Server
 
-A local MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, meal planning, and more — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, or any MCP-compatible client.
+A Model Context Protocol (MCP) server that integrates with AnyList, enabling Claude and other MCP-compatible clients to manage grocery lists, recipes, and meal planning through natural language interactions.
 
-## Architecture: Domain-Grouped Tools
+## Features
 
-Instead of 18+ individual tools, this branch organizes functionality into **5 domain-grouped tools** with an `action` parameter. This reduces tool clutter while keeping full coverage:
+### 🛒 List Management
+- **Get Lists**: View all your AnyList lists with items
+- **Add Items**: Add new items to any list with quantity and details
+- **Update Items**: Modify item names, quantities, details, or check/uncheck status
+- **Remove Items**: Delete items from lists
+- **Toggle Items**: Quickly check/uncheck items
+- **Bulk Operations**: Uncheck all items in a list
 
-| Tool | Actions | Description |
-|------|---------|-------------|
-| `health_check` | — | Test AnyList connection |
-| `shopping` | `list_lists`, `list_items`, `add_item`, `check_item`, `delete_item`, `get_favorites`, `get_recents` | Shopping list management |
-| `recipes` | `list`, `get`, `create`, `delete` | Recipe CRUD |
-| `meal_plan` | `list_events`, `list_labels`, `create_event`, `delete_event` | Meal planning calendar |
-| `recipe_collections` | `list`, `create` | Recipe organization |
+### 👨‍🍳 Recipe Management
+- **Recipe CRUD**: Create, read, update, and delete recipes
+- **Recipe Details**: Full recipe information including ingredients, instructions, prep/cook times
+- **Recipe Import**: Import recipes from URLs (where supported by AnyList)
+- **Recipe Collections**: Organize recipes into collections
+- **Recipe Search**: Find and view specific recipes
 
-### Lazy Loading
+### 📅 Meal Planning
+- **Meal Events**: Create and manage meal planning events
+- **Recipe Assignment**: Link recipes to specific meals
+- **Daily Planning**: View meals planned for specific dates
+- **Weekly Planning**: Get comprehensive weekly meal plans
+- **Calendar Integration**: Schedule meals with dates and meal types
 
-- **`list` actions** return summaries (name, rating, times) — fast and lightweight
-- **`get` actions** return full details (ingredients, steps) — only when you need them
+## Documentation
 
-This two-step pattern keeps responses small and lets the model decide when to drill down.
+📚 **Complete documentation is available in the `/docs` directory:**
 
-## Prerequisites
+- **[Setup Guide](docs/SETUP_GUIDE.md)** - Comprehensive installation and configuration
+- **[API Reference](docs/API_REFERENCE.md)** - Complete tool documentation with examples
+- **[Authentication Guide](docs/AUTHENTICATION.md)** - Secure credential management
+- **[Usage Examples](docs/EXAMPLES.md)** - Practical workflows and use cases
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Contributing and development
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Project Completion](docs/PROJECT_COMPLETION.md)** - Final deployment and verification procedures
+- **[Test Suite Documentation](docs/TEST_SUITE.md)** - Comprehensive testing guide and procedures
+- **[Type Documentation](docs/types-documentation.md)** - TypeScript types and validation
 
-- [Node.js](https://nodejs.org/) v16+
-- An [AnyList](https://www.anylist.com/) account
+## Quick Start
 
-## Installation
+### Prerequisites
+
+- Node.js 18.0.0 or higher
+- An AnyList account with valid credentials
+- Claude Desktop (for MCP integration) or another MCP-compatible client
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd anylist-mcp
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Build the project:**
+   ```bash
+   npm run build
+   ```
+
+## Quick Configuration
+
+**For detailed setup instructions, see the [Setup Guide](docs/SETUP_GUIDE.md)**
+
+### Basic Environment Setup
+
+Create a `.env` file with your AnyList credentials:
 
 ```bash
-git clone https://github.com/bobby060/anylist-mcp.git
-cd anylist-mcp
-npm install
+ANYLIST_EMAIL=your-email@example.com
+ANYLIST_PASSWORD=your-password
 ```
 
-### Environment Variables
+### Claude Desktop Integration
 
-```bash
-cp .env.example .env
-```
-
-```env
-ANYLIST_USERNAME=your_email@example.com
-ANYLIST_PASSWORD=your_password
-ANYLIST_LIST_NAME=Groceries
-```
-
-### Claude Desktop / Claude Code Configuration
+Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
   "mcpServers": {
     "anylist": {
       "command": "node",
-      "args": ["/absolute/path/to/anylist-mcp/src/server.js"],
+      "args": ["/path/to/anylist-mcp/dist/index.js"],
       "env": {
-        "ANYLIST_USERNAME": "you@example.com",
-        "ANYLIST_PASSWORD": "yourpassword",
-        "ANYLIST_LIST_NAME": "Groceries"
+        "ANYLIST_EMAIL": "your-email@example.com",
+        "ANYLIST_PASSWORD": "your-password"
       }
     }
   }
 }
 ```
 
-## Usage Examples
+**For comprehensive setup instructions including:**
+- Multiple authentication methods
+- Platform-specific configurations
+- Troubleshooting steps
+- Security best practices
 
-### The Action Parameter Pattern
+**👉 See the [Setup Guide](docs/SETUP_GUIDE.md)**
 
-Every domain tool takes an `action` enum plus action-specific parameters:
+## Usage
 
-```json
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Milk", "quantity": 2 } }
+**For comprehensive usage examples and workflows, see [Usage Examples](docs/EXAMPLES.md)**
+
+### Quick Examples
+
+Once connected to Claude Desktop, you can use natural language to interact with AnyList:
+
+#### List Management
+```
+Show me all my AnyList lists
+Add milk and bread to my grocery list
+Check off eggs from my shopping list
 ```
 
-```json
-{ "name": "recipes", "arguments": { "action": "list", "search": "pasta" } }
+#### Recipe Management
+```
+Show me all my recipes
+Create a new recipe for chocolate chip cookies
+Get the details for my lasagna recipe
 ```
 
-```json
-{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Taco Night" } }
+#### Meal Planning
+```
+What meals do I have planned for today?
+Schedule chicken dinner for tomorrow
+Show me my meal plan for this week
 ```
 
-### Typical Multi-Step Interaction
+**👉 For detailed workflows, advanced examples, and best practices, see [Usage Examples](docs/EXAMPLES.md)**
 
-1. **Browse recipes** — `recipes` → `list` (get summaries)
-2. **Get details** — `recipes` → `get` with `name` (full ingredients & steps)
-3. **Plan the meal** — `meal_plan` → `create_event` with date and recipe
-4. **Add ingredients to shopping list** — `shopping` → `add_item` for each ingredient
+## Development
 
-### Shopping Tool
+**For comprehensive development information, see [Developer Guide](docs/DEVELOPER_GUIDE.md)**
 
-```json
-// List all shopping lists
-{ "name": "shopping", "arguments": { "action": "list_lists" } }
-
-// List items on a specific list
-{ "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
-
-// Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic" } }
-
-// Check off an item
-{ "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
-
-// Delete an item permanently
-{ "name": "shopping", "arguments": { "action": "delete_item", "name": "Eggs" } }
-```
-
-### Recipes Tool
-
-```json
-// Browse all recipes (summaries only — lazy loading)
-{ "name": "recipes", "arguments": { "action": "list" } }
-
-// Search recipes
-{ "name": "recipes", "arguments": { "action": "list", "search": "chicken" } }
-
-// Get full details (ingredients + steps)
-{ "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
-
-// Create a recipe
-{ "name": "recipes", "arguments": {
-    "action": "create",
-    "name": "Simple Pasta",
-    "ingredients": ["1 lb spaghetti", "2 cloves garlic", "1/4 cup olive oil"],
-    "steps": ["Boil pasta", "Sauté garlic", "Toss together"],
-    "servings": "4"
-} }
-```
-
-### Meal Plan Tool
-
-```json
-// View meal plan
-{ "name": "meal_plan", "arguments": { "action": "list_events" } }
-
-// Get available labels (Breakfast, Lunch, Dinner, etc.)
-{ "name": "meal_plan", "arguments": { "action": "list_labels" } }
-
-// Schedule a meal
-{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Pizza Night", "label_id": "dinner-id" } }
-```
-
-### Recipe Collections Tool
-
-```json
-// List collections
-{ "name": "recipe_collections", "arguments": { "action": "list" } }
-
-// Create a collection
-{ "name": "recipe_collections", "arguments": { "action": "create", "name": "Weeknight Dinners", "recipe_names": ["Simple Pasta"] } }
-```
-
-## Testing
+### Quick Start
 
 ```bash
-# Unit tests (mocked, no credentials needed)
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+
+# Run tests
 npm test
 
-# Integration tests (requires .env with real credentials)
-npm run test:integration
+# Type check
+npm run type-check
+
+# Lint code
+npm run lint
 ```
 
-## Debugging
+**👉 For architecture details, contribution guidelines, and development workflows, see [Developer Guide](docs/DEVELOPER_GUIDE.md)**
 
+## API Reference
+
+**For complete API documentation, see [API Reference](docs/API_REFERENCE.md)**
+
+### Available Tools
+
+- **Authentication Tools** - Manage credentials and authentication
+- **List Management** - Create, view, and manage grocery lists and items
+- **Recipe Management** - Create, update, and organize recipes
+- **Meal Planning** - Schedule meals and plan weekly menus
+- **Bulk Operations** - Efficient multi-item operations
+
+**👉 For detailed tool documentation with parameters and examples, see [API Reference](docs/API_REFERENCE.md)**
+
+## Troubleshooting
+
+**For comprehensive troubleshooting, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md)**
+
+### Quick Solutions
+
+**Authentication Issues:**
+```
+# In Claude Desktop
+Check my AnyList authentication status
+```
+
+**Connection Problems:**
 ```bash
-npx @modelcontextprotocol/inspector node src/server.js
+# Test connectivity
+ping api.anylist.com
 ```
 
-## Desktop Extension / MCPB
-
-This server can be packaged as an MCPB desktop extension for one-click installation in Claude Desktop and other MCP-compatible apps.
-
-### Install from .mcpb file
-
-1. Download or build the `.mcpb` file (see below)
-2. Open Claude Desktop → Settings → Extensions
-3. Drag and drop the `.mcpb` file, or click "Install from file"
-4. Enter your configuration when prompted:
-   - **AnyList Email** — your AnyList account email
-   - **AnyList Password** — your AnyList account password
-   - **Default Shopping List** — optional, defaults to "Groceries"
-
-### Build the bundle
-
+**Configuration Issues:**
 ```bash
-npm install
-npm run pack
+# Validate configuration
+npm run type-check
 ```
 
-This produces an `anylist-mcp.mcpb` file you can distribute or install locally.
+**👉 For detailed solutions to common issues, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md)**
 
-## Contributions
-Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.
+## Contributing
 
-## Credits
+**For contribution guidelines, see [Developer Guide](docs/DEVELOPER_GUIDE.md)**
 
-AnyList API from a fork of [anylist](https://github.com/codetheweb/anylist) by @codetheweb.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes and add tests
+4. Ensure all tests pass
+5. Submit a pull request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [FastMCP](https://github.com/punkpeye/fastmcp) - TypeScript MCP framework
+- [AnyList API](https://github.com/codetheweb/anylist) - Unofficial AnyList API wrapper
+- [Model Context Protocol](https://modelcontextprotocol.io/) - Protocol specification 
