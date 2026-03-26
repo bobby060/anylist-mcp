@@ -1,10 +1,8 @@
-# AnyList MCP Server
+# Unofficial AnyList MCP Server
 
 A local MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, meal planning, and more — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, or any MCP-compatible client.
 
-## Architecture: Domain-Grouped Tools
-
-Instead of 18+ individual tools, this branch organizes functionality into **5 domain-grouped tools** with an `action` parameter. This reduces tool clutter while keeping full coverage:
+Instead of 18+ individual tools, functionality is organized into **5 domain-grouped tools**:
 
 | Tool | Actions | Description |
 |------|---------|-------------|
@@ -14,15 +12,21 @@ Instead of 18+ individual tools, this branch organizes functionality into **5 do
 | `meal_plan` | `list_events`, `list_labels`, `create_event`, `delete_event` | Meal planning calendar |
 | `recipe_collections` | `list`, `create` | Recipe organization |
 
-### Lazy Loading
+Right now there are known issues with creating recipies and recipe collections.
 
-- **`list` actions** return summaries (name, rating, times) — fast and lightweight
-- **`get` actions** return full details (ingredients, steps) — only when you need them
+# Installation: Claude Desktop
+The fastest way to get started is to download the latest `anylist-mcp.mcpb` from the release files. You can also build it following the instructions below.
 
-This two-step pattern keeps responses small and lets the model decide when to drill down.
+1. Open Claude Desktop -> Settings -> Extensions
+2. Drag and drop the `.mcpb` file, or click "Advanced settings" -> install extension
+3. Enter your configuration when prompted:
+   - **AnyList Email** — your AnyList account email
+   - **AnyList Password** — your AnyList account password
+   - **Default Shopping List** — optional, defaults to "Groceries"
+
+# Building from source/developing
 
 ## Prerequisites
-
 - [Node.js](https://nodejs.org/) v16+
 - An [AnyList](https://www.anylist.com/) account
 
@@ -173,15 +177,7 @@ npx @modelcontextprotocol/inspector node src/server.js
 
 This server can be packaged as an MCPB desktop extension for one-click installation in Claude Desktop and other MCP-compatible apps.
 
-### Install from .mcpb file
 
-1. Download or build the `.mcpb` file (see below)
-2. Open Claude Desktop → Settings → Extensions
-3. Drag and drop the `.mcpb` file, or click "Install from file"
-4. Enter your configuration when prompted:
-   - **AnyList Email** — your AnyList account email
-   - **AnyList Password** — your AnyList account password
-   - **Default Shopping List** — optional, defaults to "Groceries"
 
 ### Build the bundle
 
@@ -190,7 +186,7 @@ npm install
 npm run pack
 ```
 
-This produces an `anylist-mcp.mcpb` file you can distribute or install locally.
+This produces an `anylist-mcp.mcpb` file you can install locally.
 
 ## Contributions
 Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.
