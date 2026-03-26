@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+// Redirect console.log/info to stderr to protect MCP stdio transport channel
+console.log = console.error;
+console.info = console.error;
+
 import 'dotenv/config';
 import { FastMCP } from 'fastmcp';
 import { AnyListService } from './services/anylist-service.js';

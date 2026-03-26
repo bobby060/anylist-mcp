@@ -15,10 +15,10 @@
   },
   "server": {
     "type": "node",
-    "entry_point": "src/server.js",
+    "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/src/server.js"],
+      "args": ["${__dirname}/dist/index.js"],
       "env": {
         "ANYLIST_USERNAME": "${user_config.anylist_username}",
         "ANYLIST_PASSWORD": "${user_config.anylist_password}",

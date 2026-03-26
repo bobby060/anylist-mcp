@@ -146,6 +146,7 @@ export interface CreateMealEventRequest {
   date: string; // ISO date string
   details?: string | undefined;
   recipeId?: string | undefined;
+  labelId?: string | undefined;
   recipeScaleFactor?: number | undefined;
 }
 
