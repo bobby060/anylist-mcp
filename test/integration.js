@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Integration test — spawns the MCP server and sends real tool calls via stdio
+import { fileURLToPath } from 'url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const transport = new StdioClientTransport({
-  command: 'node',
+  command: process.execPath,
   args: ['src/server.js'],
   env: { ...process.env },
-  cwd: new URL('..', import.meta.url).pathname,
+  cwd: fileURLToPath(new URL('..', import.meta.url)),
 });
 
 const client = new Client({ name: 'integration-test', version: '1.0.0' });
@@ -122,13 +123,15 @@ try {
   await test(`recipes → get ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: testRecipe } });
     const text = r.content[0].text;
-    if (!text.includes(testRecipe)) throw new Error('Recipe not found in details');
+    if (r.isError || text.toLowerCase().includes('failed') || text.toLowerCase().includes('not found')) throw new Error(text);
+    if (!text.includes(testRecipe)) throw new Error('Recipe name missing from details');
     return text.split('\n')[0];
   });
 
   await test(`recipes → delete ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: testRecipe } });
     const text = r.content[0].text;
+    if (r.isError || text.toLowerCase().includes('failed') || text.toLowerCase().includes('not found')) throw new Error(text);
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
     return text;
   });

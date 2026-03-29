@@ -165,6 +165,9 @@ npm test
 
 # Integration tests (requires .env with real credentials)
 npm run test:integration
+
+# Confirm anylist client is working (also requires credentials )
+npm run test:client
 ```
 
 ## Debugging
