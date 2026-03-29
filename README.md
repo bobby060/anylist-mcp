@@ -12,7 +12,7 @@ Instead of 18+ individual tools, functionality is organized into **5 domain-grou
 | `meal_plan` | `list_events`, `list_labels`, `create_event`, `delete_event` | Meal planning calendar |
 | `recipe_collections` | `list`, `create` | Recipe organization |
 
-Right now there are known issues with creating recipies and recipe collections.
+Recipe and recipe collection creation is fully supported.
 
 # Installation: Claude Desktop
 The fastest way to get started is to download the latest `anylist-mcp.mcpb` from the release files. You can also build it following the instructions below.
@@ -124,11 +124,15 @@ Every domain tool takes an `action` enum plus action-specific parameters:
 // Get full details (ingredients + steps)
 { "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
 
-// Create a recipe
+// Create a recipe — ingredients require separate name and quantity fields
 { "name": "recipes", "arguments": {
     "action": "create",
     "name": "Simple Pasta",
-    "ingredients": ["1 lb spaghetti", "2 cloves garlic", "1/4 cup olive oil"],
+    "ingredients": [
+      { "name": "spaghetti", "quantity": "1 lb" },
+      { "name": "garlic cloves", "quantity": "2" },
+      { "name": "olive oil", "quantity": "1/4 cup" }
+    ],
     "steps": ["Boil pasta", "Sauté garlic", "Toss together"],
     "servings": "4"
 } }
@@ -165,6 +169,9 @@ npm test
 
 # Integration tests (requires .env with real credentials)
 npm run test:integration
+
+# Confirm anylist client is working (also requires credentials )
+npm run test:client
 ```
 
 ## Debugging

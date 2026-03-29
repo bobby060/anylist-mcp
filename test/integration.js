@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Integration test — spawns the MCP server and sends real tool calls via stdio
+import { fileURLToPath } from 'url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const transport = new StdioClientTransport({
-  command: 'node',
+  command: process.execPath,
   args: ['src/server.js'],
   env: { ...process.env },
-  cwd: new URL('..', import.meta.url).pathname,
+  cwd: fileURLToPath(new URL('..', import.meta.url)),
 });
 
 const client = new Client({ name: 'integration-test', version: '1.0.0' });
@@ -105,10 +106,16 @@ try {
 
   // Recipes: create, get, delete
   const testRecipe = `🧪 Test Recipe ${Date.now()}`;
+  const testIngredients = [
+    { name: 'testing', quantity: '1 cup' },
+    { name: 'assertions', quantity: '2 tbsp' },
+  ];
+  let beforeCreate;
   await test(`recipes → create ("${testRecipe}")`, async () => {
+    beforeCreate = Date.now();
     const r = await client.callTool({ name: 'recipes', arguments: {
       action: 'create', name: testRecipe,
-      ingredients: ['1 cup testing', '2 tbsp assertions'],
+      ingredients: testIngredients,
       steps: ['Mix ingredients', 'Verify results']
     }});
     const text = r.content[0].text;
@@ -122,13 +129,29 @@ try {
   await test(`recipes → get ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: testRecipe } });
     const text = r.content[0].text;
-    if (!text.includes(testRecipe)) throw new Error('Recipe not found in details');
+    if (r.isError || text.toLowerCase().includes('failed') || text.toLowerCase().includes('not found')) throw new Error(text);
+    if (!text.includes(testRecipe)) throw new Error('Recipe name missing from details');
+
+    // Verify each ingredient's name and quantity appear in the response
+    for (const ingredient of testIngredients) {
+      if (!text.includes(ingredient.name)) throw new Error(`Ingredient name "${ingredient.name}" missing from recipe details`);
+      if (!text.includes(ingredient.quantity)) throw new Error(`Ingredient quantity "${ingredient.quantity}" missing from recipe details`);
+    }
+
+    // Verify createdAt is set and close to when create was called (within 60s)
+    const createdAtMatch = text.match(/^Created: (.+)$/m);
+    if (!createdAtMatch) throw new Error('createdAt missing from recipe details');
+    const createdAt = new Date(createdAtMatch[1]).getTime();
+    const drift = Math.abs(createdAt - beforeCreate);
+    if (drift > 60_000) throw new Error(`createdAt drift too large: ${drift}ms (expected within 60s of create call)`);
+
     return text.split('\n')[0];
   });
 
   await test(`recipes → delete ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: testRecipe } });
     const text = r.content[0].text;
+    if (r.isError || text.toLowerCase().includes('failed') || text.toLowerCase().includes('not found')) throw new Error(text);
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
     return text;
   });
