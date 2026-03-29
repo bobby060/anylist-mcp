@@ -334,6 +334,9 @@ class AnyListClient {
         cookTime: recipe.cookTime || null,
         servings: recipe.servings || null,
         nutritionalInfo: recipe.nutritionalInfo || null,
+        createdAt: recipe.creationTimestamp
+          ? new Date(recipe.creationTimestamp * 1000).toISOString()
+          : (recipe.timestamp ? new Date(recipe.timestamp * 1000).toISOString() : null),
         ingredients: recipe.ingredients ? recipe.ingredients.map(i => ({
           rawIngredient: i.rawIngredient || null,
           name: i.name || null,
@@ -374,6 +377,7 @@ class AnyListClient {
           preparationSteps: decoded.recipe.preparationSteps || [],
         });
         recipe.isNewRecipeFromWebImport = true;
+        recipe.creationTimestamp = Date.now() / 1000;
         await recipe.save();
         console.error(`Imported recipe from URL (native): ${recipe.name}`);
 
@@ -430,7 +434,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipeObj = { name };
+      const nowSecs = Date.now() / 1000;
+      const recipeObj = { name, creationTimestamp: nowSecs };
       if (note) recipeObj.note = note;
       if (sourceName) recipeObj.sourceName = sourceName;
       if (sourceUrl) recipeObj.sourceUrl = sourceUrl;
@@ -441,7 +446,7 @@ class AnyListClient {
       if (ingredients.length > 0) {
         recipeObj.ingredients = ingredients.map(i => ({
           rawIngredient: typeof i === 'string' ? i : i.rawIngredient || `${i.quantity || ''} ${i.name || ''}`.trim(),
-          name: typeof i === 'string' ? i : i.name || null,
+          name: typeof i === 'string' ? i : (i.name || i.rawIngredient || null),
           quantity: typeof i === 'string' ? null : i.quantity || null,
           note: typeof i === 'string' ? null : i.note || null,
         }));

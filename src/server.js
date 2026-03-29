@@ -326,7 +326,10 @@ server.registerTool("recipes", {
     action: z.enum(["list", "get", "create", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
     name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
     search: z.string().optional().describe("Search query to filter recipes (list only)"),
-    ingredients: z.array(z.string()).optional().describe("Ingredient strings, e.g. '2 cups flour' (create only)"),
+    ingredients: z.array(z.object({
+      name: z.string().describe("Ingredient name, e.g. 'flour'"),
+      quantity: z.string().describe("Quantity with unit, e.g. '2 cups'"),
+    })).optional().describe("Ingredients with name and quantity (create only)"),
     steps: z.array(z.string()).optional().describe("Preparation steps in order (create only)"),
     note: z.string().optional().describe("Recipe notes (create only)"),
     source_name: z.string().optional().describe("Source name (create only)"),
@@ -369,6 +372,7 @@ server.registerTool("recipes", {
         if (recipe.prepTime) text += `Prep: ${recipe.prepTime} min\n`;
         if (recipe.cookTime) text += `Cook: ${recipe.cookTime} min\n`;
         if (recipe.servings) text += `Servings: ${recipe.servings}\n`;
+        if (recipe.createdAt) text += `Created: ${recipe.createdAt}\n`;
         if (recipe.note) text += `\nNotes: ${recipe.note}\n`;
         if (recipe.ingredients.length > 0) {
           text += `\n## Ingredients\n`;
@@ -400,7 +404,11 @@ server.registerTool("recipes", {
         }
         const result = await anylistClient.createRecipe({
           name: recipeName,
-          ingredients: (ingredients || []).map(i => ({ rawIngredient: i })),
+          ingredients: (ingredients || []).map(i => ({
+            name: i.name,
+            quantity: i.quantity,
+            rawIngredient: `${i.quantity} ${i.name}`.trim(),
+          })),
           preparationSteps: steps || [],
           note: note || null,
           sourceName: source_name || null,
