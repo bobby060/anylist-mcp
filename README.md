@@ -59,7 +59,7 @@ Add to your MCP config (`~/.claude/claude_desktop_config.json` or equivalent):
 
 ## Installation: Claude Web / Claude Mobile
 
-Claude Web and Mobile require an HTTP MCP server accessible over HTTPS. This project includes a Docker-based HTTP server designed to run behind a Cloudflare Tunnel. 
+Claude Web and Mobile require an HTTP MCP server accessible over HTTPS. This project includes a Docker-based HTTP server designed to run behind a Cloudflare Tunnel. The server is designed for self-hosting, but can theoretically support any number of users. You can (should?) restrict what email addresses are allowed to create accounts in the `allowed-emails.txt` file. 
 
 See **[docs/cloudflare-setup.md](docs/cloudflare-setup.md)** for the full setup guide, including:
 - Quick tunnel for development (no Cloudflare account needed)

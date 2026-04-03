@@ -32,7 +32,8 @@ cp .env.http.example .env
 mkdir -p config
 cp allowed-emails.example.txt config/allowed-emails.txt
 # Edit .env — set SERVER_SECRET_KEY and SESSION_SECRET
-# Edit config/allowed-emails.txt — add your email address
+# Edit config/allowed-emails.txt — add your email address/es that you 
+# want to be able to access the server
 
 # 2. Start everything with the dev profile
 docker compose --profile cloudflare-temp up --build
@@ -61,9 +62,6 @@ cp allowed-emails.example.txt config/allowed-emails.txt
 # 2. Start everything with the dev profile
 docker compose up --build
 ```
-
-
-
 
 
 
@@ -159,7 +157,7 @@ and requires OAuth authentication for the MCP endpoint.
 ---
 
 ## Authentication
-Currently only username/password authentication is supported. In the future I hope to add Google Oauth authentication.
+Currently only username/password authentication is supported. In the future I hope to add Google Oauth authentication. Warning: The authentication workflow hasn't really been validated, so insert disclaimer here about use at your own risk etc. etc.
 
 
 
