@@ -87,8 +87,15 @@ router.get("/oauth/authorize", (req, res) => {
     return res.status(400).send("Missing required parameters: client_id, code_challenge");
   }
 
-  // Store OAuth params in session, redirect to login
+  // Store OAuth params in session
   req.session.oauthParams = { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope };
+
+  // If the user already has an active session, skip the login step
+  if (req.session.userId) {
+    const hasCreds = !!getAnyListCredentials(req.session.userId);
+    return res.redirect(hasCreds ? "/oauth/consent" : "/setup");
+  }
+
   res.redirect("/login");
 });
 
