@@ -8,6 +8,17 @@ This guide covers two scenarios:
 
 ## Prerequisites
 
+Clone the repo with submodules (required — the AnyList JS library is a git submodule):
+```bash
+git clone --recurse-submodules https://github.com/bobby060/anylist-mcp.git
+cd anylist-mcp
+```
+
+If you already cloned without `--recurse-submodules`, initialize the submodule now:
+```bash
+git submodule update --init
+```
+
 Install `cloudflared`:
 ```bash
 # macOS
@@ -162,6 +173,12 @@ Currently only username/password authentication is supported. In the future I ho
 
 
 ## Troubleshooting
+
+**`Cannot find module '/app/anylist-js/lib/index.js'`**: The `anylist-js` submodule wasn't initialized before building the Docker image. Fix:
+```bash
+git submodule update --init
+docker compose up --build
+```
 
 **"Bad Gateway" errors**: The tunnel is running but the container isn't. Check:
 ```bash
