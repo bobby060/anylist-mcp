@@ -1,56 +1,43 @@
 # Unofficial AnyList MCP Server
 
-A local MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, meal planning, and more — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, or any MCP-compatible client.
+An MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, and meal planning — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, Claude Web/Mobile, or any MCP-compatible client.
 
-Instead of 18+ individual tools, functionality is organized into **5 domain-grouped tools**:
+Two deployment modes:
+- **Local (stdio)** — runs on your machine alongside Claude Desktop or Claude Code. Fastest setup, no server required.
+- **HTTP server** — runs in Docker behind a Cloudflare Tunnel. Required for Claude Web and Claude Mobile, and useful for sharing access across devices or users.
 
-| Tool | Actions | Description |
-|------|---------|-------------|
-| `health_check` | — | Test AnyList connection |
-| `shopping` | `list_lists`, `list_items`, `add_item`, `check_item`, `delete_item`, `get_favorites`, `get_recents` | Shopping list management |
-| `recipes` | `list`, `get`, `create`, `delete` | Recipe CRUD |
-| `meal_plan` | `list_events`, `list_labels`, `create_event`, `delete_event` | Meal planning calendar |
-| `recipe_collections` | `list`, `create` | Recipe organization |
+Functionality is organized into **5 domain-grouped tools** rather than 18+ individual ones. See [docs/tools.md](docs/tools.md) for the full tool reference.
 
-Recipe and recipe collection creation is fully supported.
+---
 
-# Installation: Claude Desktop
-The fastest way to get started is to download the latest `anylist-mcp.mcpb` from the release files. You can also build it following the instructions below.
+## Installation: Claude Desktop
 
-1. Open Claude Desktop -> Settings -> Extensions
-2. Drag and drop the `.mcpb` file, or click "Advanced settings" -> install extension
+The fastest way to get started is to download the latest `anylist-mcp.mcpb` from the [releases page](../../releases).
+
+1. Open Claude Desktop → Settings → Extensions
+2. Drag and drop the `.mcpb` file, or click "Advanced settings" → Install extension
 3. Enter your configuration when prompted:
    - **AnyList Email** — your AnyList account email
    - **AnyList Password** — your AnyList account password
    - **Default Shopping List** — optional, defaults to "Groceries"
 
-# Building from source/developing
+---
 
-## Prerequisites
-- [Node.js](https://nodejs.org/) v16+
+## Installation: Claude Code / Claude Desktop (from source)
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) v18+
 - An [AnyList](https://www.anylist.com/) account
 
-## Installation
+### Setup
 
 ```bash
-git clone https://github.com/bobby060/anylist-mcp.git
+git clone --recurse-submodules https://github.com/bobby060/anylist-mcp.git
 cd anylist-mcp
 npm install
 ```
 
-### Environment Variables
-
-```bash
-cp .env.example .env
-```
-
-```env
-ANYLIST_USERNAME=your_email@example.com
-ANYLIST_PASSWORD=your_password
-ANYLIST_LIST_NAME=Groceries
-```
-
-### Claude Desktop / Claude Code Configuration
+Add to your MCP config (`~/.claude/claude_desktop_config.json` or equivalent):
 
 ```json
 {
@@ -68,100 +55,35 @@ ANYLIST_LIST_NAME=Groceries
 }
 ```
 
-## Usage Examples
+---
 
-### The Action Parameter Pattern
+## Installation: Claude Web / Claude Mobile
 
-Every domain tool takes an `action` enum plus action-specific parameters:
+Claude Web and Mobile require an HTTP MCP server accessible over HTTPS. This project includes a Docker-based HTTP server designed to run behind a Cloudflare Tunnel. 
 
-```json
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Milk", "quantity": 2 } }
+See **[docs/cloudflare-setup.md](docs/cloudflare-setup.md)** for the full setup guide, including:
+- Quick tunnel for development (no Cloudflare account needed)
+- Named tunnel for production (stable URL on your own domain)
+
+**Quick start:**
+
+```bash
+git clone --recurse-submodules https://github.com/bobby060/anylist-mcp.git
+cd anylist-mcp
+
+# Configure
+cp .env.http.example .env          # fill in SERVER_SECRET_KEY and SESSION_SECRET
+mkdir -p config
+cp allowed-emails.example.txt config/allowed-emails.txt   # add your email
+
+# Start server + Cloudflare quick tunnel
+docker compose --profile cloudflare-temp up --build
+# Watch logs for the trycloudflare.com URL, then add it as an MCP server in Claude Settings/Connectors
 ```
 
-```json
-{ "name": "recipes", "arguments": { "action": "list", "search": "pasta" } }
-```
+---
 
-```json
-{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Taco Night" } }
-```
-
-### Typical Multi-Step Interaction
-
-1. **Browse recipes** — `recipes` → `list` (get summaries)
-2. **Get details** — `recipes` → `get` with `name` (full ingredients & steps)
-3. **Plan the meal** — `meal_plan` → `create_event` with date and recipe
-4. **Add ingredients to shopping list** — `shopping` → `add_item` for each ingredient
-
-### Shopping Tool
-
-```json
-// List all shopping lists
-{ "name": "shopping", "arguments": { "action": "list_lists" } }
-
-// List items on a specific list
-{ "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
-
-// Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic" } }
-
-// Check off an item
-{ "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
-
-// Delete an item permanently
-{ "name": "shopping", "arguments": { "action": "delete_item", "name": "Eggs" } }
-```
-
-### Recipes Tool
-
-```json
-// Browse all recipes (summaries only — lazy loading)
-{ "name": "recipes", "arguments": { "action": "list" } }
-
-// Search recipes
-{ "name": "recipes", "arguments": { "action": "list", "search": "chicken" } }
-
-// Get full details (ingredients + steps)
-{ "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
-
-// Create a recipe — ingredients require separate name and quantity fields
-{ "name": "recipes", "arguments": {
-    "action": "create",
-    "name": "Simple Pasta",
-    "ingredients": [
-      { "name": "spaghetti", "quantity": "1 lb" },
-      { "name": "garlic cloves", "quantity": "2" },
-      { "name": "olive oil", "quantity": "1/4 cup" }
-    ],
-    "steps": ["Boil pasta", "Sauté garlic", "Toss together"],
-    "servings": "4"
-} }
-```
-
-### Meal Plan Tool
-
-```json
-// View meal plan
-{ "name": "meal_plan", "arguments": { "action": "list_events" } }
-
-// Get available labels (Breakfast, Lunch, Dinner, etc.)
-{ "name": "meal_plan", "arguments": { "action": "list_labels" } }
-
-// Schedule a meal
-{ "name": "meal_plan", "arguments": { "action": "create_event", "date": "2025-02-15", "title": "Pizza Night", "label_id": "dinner-id" } }
-```
-
-### Recipe Collections Tool
-
-```json
-// List collections
-{ "name": "recipe_collections", "arguments": { "action": "list" } }
-
-// Create a collection
-{ "name": "recipe_collections", "arguments": { "action": "create", "name": "Weeknight Dinners", "recipe_names": ["Simple Pasta"] } }
-```
-
-## Testing
+## Development
 
 ```bash
 # Unit tests (mocked, no credentials needed)
@@ -170,34 +92,26 @@ npm test
 # Integration tests (requires .env with real credentials)
 npm run test:integration
 
-# Confirm anylist client is working (also requires credentials )
-npm run test:client
-```
-
-## Debugging
-
-```bash
+# Inspect with the MCP inspector
 npx @modelcontextprotocol/inspector node src/server.js
 ```
 
-## Desktop Extension / MCPB
-
-This server can be packaged as an MCPB desktop extension for one-click installation in Claude Desktop and other MCP-compatible apps.
-
-
-
-### Build the bundle
+### Building the desktop extension
 
 ```bash
-npm install
-npm run pack
+npm run pack   # produces anylist-mcp.mcpb
 ```
 
-This produces an `anylist-mcp.mcpb` file you can install locally.
+---
 
-## Contributions
-Contributions are welcome! Please feel free to submit issues and pull requests - especially if you find something off.
+## Roadmap
+
+- **Google OAuth** — allow users to sign in to the HTTP MCP server with their Google account instead of a separate password.
+
+---
 
 ## Credits
 
 AnyList API from a fork of [anylist](https://github.com/codetheweb/anylist) by @codetheweb.
+
+Contributions welcome — feel free to open issues and pull requests.

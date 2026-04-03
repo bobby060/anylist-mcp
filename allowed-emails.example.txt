@@ -1,0 +1,10 @@
+# allowed-emails.txt — one email address per line
+# Lines starting with # are ignored.
+#
+# Copy this file to allowed-emails.txt (in the same directory as docker-compose.yml),
+# add the email addresses that are allowed to register and sign in, then mount it
+# into the container via the volume defined in docker-compose.yml.
+#
+# Example:
+alice@example.com
+bob@example.com

@@ -10,6 +10,8 @@
     "test:client": "node test/anylist-client/index.js",
     "test:integration": "node test/integration.js",
     "pack": "mcpb pack",
+    "start:http": "node src/http/index.js",
+    "dev:http": "node --watch src/http/index.js",
     "test": "node --test test/*.test.js"
   },
   "keywords": [
@@ -24,6 +26,11 @@
     "@anthropic-ai/mcpb": "^2.1.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "anylist": "^0.8.5",
-    "dotenv": "^16.4.5"
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.8.0",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "google-auth-library": "^10.6.2"
   }
 }
