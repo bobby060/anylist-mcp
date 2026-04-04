@@ -26,3 +26,4 @@ Thumbs.db
 
 # Config directory with real allowed emails (copy of example with real emails)
 /config/
+allowed-emails.txt
