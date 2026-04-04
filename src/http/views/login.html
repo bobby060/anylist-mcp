@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — AnyList MCP</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 2px 16px rgba(0,0,0,.08); padding: 2rem; width: 100%; max-width: 380px; }
+    h1 { font-size: 1.3rem; margin: 0 0 1.5rem; text-align: center; color: #111; }
+    .logo { text-align: center; font-size: 2rem; margin-bottom: .5rem; }
+    label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .3rem; color: #333; }
+    input[type=email], input[type=password] { width: 100%; padding: .6rem .8rem; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; margin-bottom: 1rem; }
+    input:focus { outline: none; border-color: #4f7df3; box-shadow: 0 0 0 2px rgba(79,125,243,.2); }
+    .btn { display: block; width: 100%; padding: .7rem; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: #4f7df3; color: #fff; }
+    .btn-primary:hover { background: #3a68e0; }
+    .btn-secondary { background: #f0f0f0; color: #333; margin-top: .5rem; }
+    .btn-secondary:hover { background: #e4e4e4; }
+    .divider { display: flex; align-items: center; gap: .8rem; margin: 1.2rem 0; color: #999; font-size: .85rem; }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid #e0e0e0; }
+    .error { background: #fff0f0; border: 1px solid #f5c0c0; color: #c00; border-radius: 6px; padding: .6rem .8rem; margin-bottom: 1rem; font-size: .9rem; }
+    .google-btn { display: flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; padding: .7rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 1rem; font-weight: 500; cursor: pointer; }
+    .google-btn:hover { background: #f8f8f8; }
+    .tabs { display: flex; margin-bottom: 1.5rem; border-bottom: 1px solid #e0e0e0; }
+    .tab { flex: 1; padding: .6rem; text-align: center; cursor: pointer; font-size: .9rem; font-weight: 600; color: #888; border-bottom: 2px solid transparent; }
+    .tab.active { color: #4f7df3; border-bottom-color: #4f7df3; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .hint { font-size: .78rem; color: #888; margin: -.6rem 0 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🛒</div>
+    <h1>AnyList MCP Server</h1>
+
+    <!-- if:error -->
+    <div class="error">{{error}}</div>
+    <!-- endif:error -->
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('signin')">Sign In</div>
+      <div class="tab" onclick="switchTab('register')">Register</div>
+    </div>
+
+    <div id="tab-signin" class="tab-panel active">
+      <form method="POST" action="/auth/login">
+        <label for="signin-email">Email</label>
+        <input type="email" id="signin-email" name="email" required autocomplete="email">
+        <label for="signin-password">Password</label>
+        <input type="password" id="signin-password" name="password" required autocomplete="current-password">
+        <p class="hint">This is your <strong>MCP server</strong> password, not your AnyList password.</p>
+        <button type="submit" class="btn btn-primary">Sign In</button>
+      </form>
+
+      <!-- if:googleEnabled -->
+      <div class="divider">or</div>
+      <div id="g_id_onload"
+           data-client_id="{{googleClientId}}"
+           data-callback="handleGoogleSignIn"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin" data-type="standard" data-width="100%"></div>
+      <script src="https://accounts.google.com/gsi/client" async defer></script>
+      <script>
+        function handleGoogleSignIn(response) {
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = "/auth/google";
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "credential";
+          input.value = response.credential;
+          form.appendChild(input);
+          document.body.appendChild(form);
+          form.submit();
+        }
+      </script>
+      <!-- endif:googleEnabled -->
+    </div>
+
+    <div id="tab-register" class="tab-panel">
+      <form method="POST" action="/auth/register">
+        <label for="reg-email">Email</label>
+        <input type="email" id="reg-email" name="email" required autocomplete="email">
+        <label for="reg-password">Password</label>
+        <input type="password" id="reg-password" name="password" required autocomplete="new-password" minlength="8">
+        <p class="hint">Choose a password for this MCP server — separate from your AnyList password.</p>
+        <button type="submit" class="btn btn-primary">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(name) {
+      document.querySelectorAll(".tab").forEach((t, i) => {
+        const panels = document.querySelectorAll(".tab-panel");
+        const tabs = document.querySelectorAll(".tab");
+        const active = (i === (name === "signin" ? 0 : 1));
+        t.classList.toggle("active", active);
+        panels[i].classList.toggle("active", active);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -18,26 +18,32 @@ Item.prototype._encode = function() {
 };
 
 class AnyListClient {
-  constructor() {
+  /**
+   * @param {{ username?: string, password?: string, defaultListName?: string }} [credentials]
+   *   Optional credentials. Falls back to ANYLIST_USERNAME / ANYLIST_PASSWORD / ANYLIST_LIST_NAME
+   *   environment variables when not provided (stdio mode).
+   */
+  constructor({ username, password, defaultListName } = {}) {
     this.client = null;
     this.targetList = null;
+    this._username = username || null;
+    this._password = password || null;
+    this.defaultListName = defaultListName || null;
   }
 
-
-
   async connect(listName = null) {
-    const username = process.env.ANYLIST_USERNAME;
-    const password = process.env.ANYLIST_PASSWORD;
-    const targetListName = listName || process.env.ANYLIST_LIST_NAME;
+    const username = this._username || process.env.ANYLIST_USERNAME;
+    const password = this._password || process.env.ANYLIST_PASSWORD;
+    const targetListName = listName || this.defaultListName || process.env.ANYLIST_LIST_NAME;
 
     if (!username || !password) {
-      const error = new Error('Missing required environment variables: ANYLIST_USERNAME or ANYLIST_PASSWORD');
+      const error = new Error('Missing AnyList credentials. Provide username and password.');
       console.error(error.message);
       throw error;
     }
 
     if (!targetListName) {
-      const error = new Error('No list name provided and ANYLIST_LIST_NAME environment variable is not set');
+      const error = new Error('No list name provided and no default list configured');
       console.error(error.message);
       throw error;
     }

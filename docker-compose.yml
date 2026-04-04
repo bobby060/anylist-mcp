@@ -1,0 +1,49 @@
+services:
+  anylist-mcp:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      BASE_URL: ${BASE_URL:-}
+      SERVER_SECRET_KEY: ${SERVER_SECRET_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ANYLIST_SESSION_IDLE_MINUTES: ${ANYLIST_SESSION_IDLE_MINUTES:-30}
+      ALLOWED_EMAILS_FILE: /config/allowed-emails.txt
+      NODE_ENV: production
+    volumes:
+      - anylist_data:/data
+      # Create ./config/allowed-emails.txt before starting:
+      #   mkdir -p config && cp allowed-emails.example.txt config/allowed-emails.txt
+      - ${CONFIG_DIR:-./config}:/config:ro
+
+  # ── Dev tunnel (quick tunnel, no account needed) ───────────────────────────
+  # URL is printed to logs and changes every restart.
+  # Usage: docker compose --profile dev up --build
+  cloudflared-temp:
+    profiles: [cloudflare-temp]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://anylist-mcp:3000
+    depends_on:
+      anylist-mcp:
+        condition: service_healthy
+
+  # ── Prod tunnel (named tunnel, requires CLOUDFLARE_TUNNEL_TOKEN) ───────────
+  # Stable URL on your own domain. Set CLOUDFLARE_TUNNEL_TOKEN in .env.
+  # Usage: docker compose --profile prod up
+  cloudflared-named:
+    profiles: [cloudflare-named]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      anylist-mcp:
+        condition: service_healthy
+
+volumes:
+  anylist_data:
