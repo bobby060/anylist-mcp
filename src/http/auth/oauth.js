@@ -115,16 +115,13 @@ router.post("/oauth/token", async (req, res) => {
 
 async function handleAuthCodeGrant(req, res) {
   const { code, redirect_uri, code_verifier, client_id } = req.body;
-  console.log(`[token] auth_code client_id:${client_id} code:${code?.slice(0, 8)}… has_verifier:${!!code_verifier}`);
 
   if (!code || !code_verifier) {
-    console.log(`[token] missing code or code_verifier`);
     return res.status(400).json({ error: "invalid_request", error_description: "Missing code or code_verifier" });
   }
 
   const codeRow = consumeOAuthCode(code);
   if (!codeRow) {
-    console.log(`[token] code not found or expired: ${code?.slice(0, 8)}…`);
     return res.status(400).json({ error: "invalid_grant", error_description: "Code invalid or expired" });
   }
 
@@ -138,10 +135,8 @@ async function handleAuthCodeGrant(req, res) {
     verifierHash = code_verifier; // plain (discouraged)
   }
   if (verifierHash !== expected) {
-    console.log(`[token] PKCE failed method:${method} expected:${expected?.slice(0, 8)}… got:${verifierHash?.slice(0, 8)}…`);
     return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
   }
-  console.log(`[token] PKCE ok — issuing tokens for user:${codeRow.user_id}`);
 
   const accessToken = randomBytes(32).toString("hex");
   const refreshToken = randomBytes(32).toString("hex");
@@ -321,18 +316,15 @@ function issueCodeAndRedirect(req, res, userId, oauth) {
 export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
-    console.log(`[bearer] no token — sending 401`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}"`);
     return res.status(401).json({ error: "unauthorized" });
   }
   const token = auth.slice(7);
   const record = getTokenRecord(token);
   if (!record || record.expires_at < Math.floor(Date.now() / 1000)) {
-    console.log(`[bearer] invalid/expired token ${token.slice(0, 8)}… found:${!!record}`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }
-  console.log(`[bearer] valid token for user:${record.user_id}`);
   req.userId = record.user_id;
   next();
 }

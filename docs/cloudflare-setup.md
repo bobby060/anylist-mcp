@@ -174,6 +174,8 @@ Currently only username/password authentication is supported. In the future I ho
 
 ## Troubleshooting
 
+**"Authorization with the MCP server failed" (auth flow completes but Claude can't connect)**: Cloudflare's Bot Fight Mode blocks requests from Claude's servers by default. Fix: in the Cloudflare dashboard → **Security → Bots**, allow AI bots (or disable Bot Fight Mode for your domain). The OAuth flow works because it's browser-based, but the actual MCP API calls come from Anthropic's servers and get flagged as bots.
+
 **`Cannot find module '/app/anylist-js/lib/index.js'`**: The `anylist-js` submodule wasn't initialized before building the Docker image. Fix:
 ```bash
 git submodule update --init

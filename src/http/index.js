@@ -69,9 +69,8 @@ app.use(session({
 
 app.use((req, res, next) => {
   const start = Date.now();
-  console.log(`→ ${req.method} ${req.path} session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}`);
   res.on("finish", () => {
-    console.log(`← ${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}`);
+    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}`);
   });
   next();
 });
