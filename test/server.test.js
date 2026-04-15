@@ -293,10 +293,12 @@ function createToolHandlers(client) {
       }
     },
 
-    list_meal_plan_events: async () => {
+    list_meal_plan_events: async ({ start_date, end_date } = {}) => {
       try {
         await client.connect(null);
-        const events = await client.getMealPlanEvents();
+        let events = await client.getMealPlanEvents();
+        if (start_date) events = events.filter(e => e.date >= start_date);
+        if (end_date) events = events.filter(e => e.date <= end_date);
         if (events.length === 0) return text("No meal plan events found.");
         events.sort((a, b) => a.date.localeCompare(b.date));
         const list = events.map(e => {
@@ -305,6 +307,7 @@ function createToolHandlers(client) {
           if (e.recipeName) parts.push(`📖 ${e.recipeName}`);
           if (e.labelName) parts.push(`[${e.labelName}]`);
           if (e.details) parts.push(`— ${e.details}`);
+          parts.push(`(id: ${e.identifier})`);
           return parts.join(' ');
         }).join('\n');
         return text(`Meal Plan (${events.length} events):\n${list}`);
@@ -654,6 +657,57 @@ describe('AnyList MCP Server - Expanded API Coverage', () => {
       const result = await handlers.list_meal_plan_events();
       const text = result.content[0].text;
       assert.ok(text.indexOf('2025-02-08') < text.indexOf('2025-02-10'));
+    });
+
+    it('includes event identifier in output', async () => {
+      mockEvents.push({ date: '2025-03-01', title: 'Sushi', identifier: 'e-abc' });
+      const result = await handlers.list_meal_plan_events();
+      assert.ok(result.content[0].text.includes('e-abc'));
+    });
+
+    it('filters events by start_date', async () => {
+      mockEvents.push(
+        { date: '2025-04-01', title: 'Early', identifier: 'e-early' },
+        { date: '2025-04-10', title: 'Mid', identifier: 'e-mid' },
+        { date: '2025-04-20', title: 'Late', identifier: 'e-late' },
+      );
+      const result = await handlers.list_meal_plan_events({ start_date: '2025-04-10' });
+      const t = result.content[0].text;
+      assert.ok(!t.includes('2025-04-01'), 'event before start_date should be excluded');
+      assert.ok(t.includes('2025-04-10'), 'event on start_date should be included');
+      assert.ok(t.includes('2025-04-20'), 'event after start_date should be included');
+    });
+
+    it('filters events by end_date', async () => {
+      mockEvents.push(
+        { date: '2025-05-01', title: 'Early', identifier: 'f-early' },
+        { date: '2025-05-10', title: 'Mid', identifier: 'f-mid' },
+        { date: '2025-05-20', title: 'Late', identifier: 'f-late' },
+      );
+      const result = await handlers.list_meal_plan_events({ end_date: '2025-05-10' });
+      const t = result.content[0].text;
+      assert.ok(t.includes('2025-05-01'), 'event before end_date should be included');
+      assert.ok(t.includes('2025-05-10'), 'event on end_date should be included');
+      assert.ok(!t.includes('2025-05-20'), 'event after end_date should be excluded');
+    });
+
+    it('filters events by start_date and end_date range', async () => {
+      mockEvents.push(
+        { date: '2025-06-01', title: 'Before', identifier: 'g-before' },
+        { date: '2025-06-05', title: 'InRange', identifier: 'g-in' },
+        { date: '2025-06-10', title: 'After', identifier: 'g-after' },
+      );
+      const result = await handlers.list_meal_plan_events({ start_date: '2025-06-03', end_date: '2025-06-07' });
+      const t = result.content[0].text;
+      assert.ok(!t.includes('2025-06-01'), 'event before range should be excluded');
+      assert.ok(t.includes('2025-06-05'), 'event in range should be included');
+      assert.ok(!t.includes('2025-06-10'), 'event after range should be excluded');
+    });
+
+    it('returns empty message when date filter excludes all events', async () => {
+      mockEvents.push({ date: '2025-07-15', title: 'Lonely', identifier: 'h-lonely' });
+      const result = await handlers.list_meal_plan_events({ start_date: '2025-08-01' });
+      assert.ok(result.content[0].text.includes('No meal plan events'));
     });
   });
 

@@ -15,6 +15,8 @@ export function register(server, getClient) {
     inputSchema: {
       action: z.enum(["list_events", "list_labels", "create_event", "delete_event"]).describe("The meal plan action to perform"),
       date: z.string().optional().describe("Date in YYYY-MM-DD format (required for create_event)"),
+      start_date: z.string().optional().describe("Filter events on or after this date, YYYY-MM-DD (list_events only)"),
+      end_date: z.string().optional().describe("Filter events on or before this date, YYYY-MM-DD (list_events only)"),
       title: z.string().optional().describe("Event title (create_event; use this OR recipe_id)"),
       recipe_id: z.string().optional().describe("Recipe ID to link (create_event)"),
       label_id: z.string().optional().describe("Label ID for meal type (create_event)"),
@@ -22,13 +24,15 @@ export function register(server, getClient) {
       event_id: z.string().optional().describe("Event ID to delete (required for delete_event)"),
     }
   }, async (params) => {
-    const { action, date, title, recipe_id, label_id, details, event_id } = params;
+    const { action, date, start_date, end_date, title, recipe_id, label_id, details, event_id } = params;
     try {
       const client = await getClient();
       await client.connect(null);
       switch (action) {
         case "list_events": {
-          const events = await client.getMealPlanEvents();
+          let events = await client.getMealPlanEvents();
+          if (start_date) events = events.filter(e => e.date >= start_date);
+          if (end_date) events = events.filter(e => e.date <= end_date);
           if (events.length === 0) return textResponse("No meal plan events found.");
           events.sort((a, b) => a.date.localeCompare(b.date));
           const list = events.map(e => {
