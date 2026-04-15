@@ -37,6 +37,7 @@ export function register(server, getClient) {
             if (e.recipeName) parts.push(`📖 ${e.recipeName}`);
             if (e.labelName) parts.push(`[${e.labelName}]`);
             if (e.details) parts.push(`— ${e.details}`);
+            parts.push(`(id: ${e.identifier})`);
             return parts.join(' ');
           }).join('\n');
           return textResponse(`Meal Plan (${events.length} events):\n${list}`);
