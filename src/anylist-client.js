@@ -528,7 +528,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const eventObj = { date: new Date(date) };
+      const eventObj = { date: new Date(`${date}T12:00:00`) };
       if (title) eventObj.title = title;
       if (recipeId) eventObj.recipeId = recipeId;
       if (labelId) eventObj.labelId = labelId;
