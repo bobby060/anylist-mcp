@@ -39,4 +39,19 @@ describe('recipe_collections tool', () => {
       assert.equal(client._collections[client._collections.length - 1].recipeNames[0], 'Pasta');
     });
   });
+
+  describe('delete', () => {
+    it('deletes an existing collection', async () => {
+      client._collections.push({ name: 'Old Collection', recipeCount: 0, recipeNames: [] });
+      const result = await handlers.recipe_collections({ action: 'delete', name: 'Old Collection' });
+      assert.ok(result.content[0].text.includes('Deleted recipe collection'));
+      assert.equal(client._collections.length, 0);
+    });
+
+    it('returns error for non-existent collection', async () => {
+      const result = await handlers.recipe_collections({ action: 'delete', name: 'Nope' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('not found'));
+    });
+  });
 });

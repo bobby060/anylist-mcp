@@ -645,6 +645,23 @@ class AnyListClient {
     }
   }
 
+  async deleteRecipeCollection(name) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const userData = await this.client._getUserData(true);
+      const collections = userData.recipeDataResponse.recipeCollections || [];
+      const raw = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+      if (!raw) throw new Error(`Recipe collection "${name}" not found`);
+      const collection = this.client.createRecipeCollection(raw);
+      await collection.delete();
+      console.error(`Deleted recipe collection: ${name}`);
+    } catch (error) {
+      throw new Error(`Failed to delete recipe collection: ${error.message}`);
+    }
+  }
+
   async disconnect() {
     if (this.client) {
       try {

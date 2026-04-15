@@ -156,4 +156,10 @@ export class MockAnyListClient {
     this._collections.push(c);
     return c;
   }
+
+  async deleteRecipeCollection(name) {
+    const idx = this._collections.findIndex(c => c.name.toLowerCase() === name.toLowerCase());
+    if (idx === -1) throw new Error(`Recipe collection "${name}" not found`);
+    this._collections.splice(idx, 1);
+  }
 }

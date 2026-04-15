@@ -11,8 +11,8 @@ export function register(server, getClient) {
 - list: Show all collections with recipe counts and names
 - create: Create a new collection, optionally with recipes`,
     inputSchema: {
-      action: z.enum(["list", "create"]).describe("The collection action to perform"),
-      name: z.string().optional().describe("Collection name (required for create)"),
+      action: z.enum(["list", "create", "delete"]).describe("The collection action to perform"),
+      name: z.string().optional().describe("Collection name (required for create, delete)"),
       recipe_names: z.array(z.string()).optional().describe("Recipe names to include (create only)"),
     }
   }, async (params) => {
@@ -32,6 +32,12 @@ export function register(server, getClient) {
           if (!collectionName) collectionName = await elicitRequiredField("name", "What should the collection be called?");
           const result = await client.createRecipeCollection(collectionName, recipe_names || []);
           return textResponse(`Created recipe collection "${result.name}"`);
+        }
+        case "delete": {
+          let deleteCollectionName = name;
+          if (!deleteCollectionName) deleteCollectionName = await elicitRequiredField("name", "Which collection would you like to delete?");
+          await client.deleteRecipeCollection(deleteCollectionName);
+          return textResponse(`Deleted recipe collection "${deleteCollectionName}"`);
         }
       }
     } catch (error) {
