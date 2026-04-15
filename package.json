@@ -12,7 +12,7 @@
     "pack": "mcpb pack",
     "start:http": "node src/http/index.js",
     "dev:http": "node --watch src/http/index.js",
-    "test": "node --test 'test/*.test.js' 'test/tools/*.test.js'"
+    "test": "node --test test/*.test.js test/tools/*.test.js"
   },
   "keywords": [
     "mcp",
