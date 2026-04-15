@@ -528,7 +528,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const eventObj = { date: new Date(date) };
+      const eventObj = { date: new Date(`${date}T12:00:00`) };
       if (title) eventObj.title = title;
       if (recipeId) eventObj.recipeId = recipeId;
       if (labelId) eventObj.labelId = labelId;
@@ -642,6 +642,23 @@ class AnyListClient {
       return { identifier: collection.identifier, name: collection.name };
     } catch (error) {
       throw new Error(`Failed to create recipe collection: ${error.message}`);
+    }
+  }
+
+  async deleteRecipeCollection(name) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const userData = await this.client._getUserData(true);
+      const collections = userData.recipeDataResponse.recipeCollections || [];
+      const raw = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+      if (!raw) throw new Error(`Recipe collection "${name}" not found`);
+      const collection = this.client.createRecipeCollection(raw);
+      await collection.delete();
+      console.error(`Deleted recipe collection: ${name}`);
+    } catch (error) {
+      throw new Error(`Failed to delete recipe collection: ${error.message}`);
     }
   }
 

@@ -98,10 +98,13 @@ try {
     return r.content[0].text.split('\n')[0];
   });
 
-  // Recipes: list
-  await test('recipes → list', async () => {
+  // Recipes: list — verify IDs appear in output
+  await test('recipes → list includes recipe IDs', async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'list' } });
-    return r.content[0].text.split('\n')[0];
+    const text = r.content[0].text;
+    if (text.includes('No recipes found')) return '(no recipes to check)';
+    if (!text.includes('(id:')) throw new Error('Recipe list missing (id: ...) field');
+    return text.split('\n')[0];
   });
 
   // Recipes: create, get, delete
@@ -126,11 +129,17 @@ try {
   // Small delay to let AnyList sync
   await new Promise(r => setTimeout(r, 2000));
 
-  await test(`recipes → get ("${testRecipe}")`, async () => {
+  let testRecipeId = null;
+  await test(`recipes → get ("${testRecipe}") — details + ID`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: testRecipe } });
     const text = r.content[0].text;
     if (r.isError || text.toLowerCase().includes('failed') || text.toLowerCase().includes('not found')) throw new Error(text);
     if (!text.includes(testRecipe)) throw new Error('Recipe name missing from details');
+
+    // Verify ID field is present and capture it
+    const idMatch = text.match(/^ID: (.+)$/m);
+    if (!idMatch) throw new Error('ID missing from recipe details');
+    testRecipeId = idMatch[1].trim();
 
     // Verify each ingredient's name and quantity appear in the response
     for (const ingredient of testIngredients) {
@@ -145,7 +154,15 @@ try {
     const drift = Math.abs(createdAt - beforeCreate);
     if (drift > 60_000) throw new Error(`createdAt drift too large: ${drift}ms (expected within 60s of create call)`);
 
-    return text.split('\n')[0];
+    return `${text.split('\n')[0]} (id: ${testRecipeId})`;
+  });
+
+  await test(`recipes → list shows ID matching get`, async () => {
+    if (!testRecipeId) return '(skipped — no recipe ID from get)';
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'list' } });
+    const text = r.content[0].text;
+    if (!text.includes(testRecipeId)) throw new Error(`Recipe ID "${testRecipeId}" not found in list output`);
+    return `ID ${testRecipeId} confirmed in list`;
   });
 
   await test(`recipes → delete ("${testRecipe}")`, async () => {
@@ -156,22 +173,140 @@ try {
     return text;
   });
 
-  // Meal plan: list_events
-  await test('meal_plan → list_events', async () => {
-    const r = await client.callTool({ name: 'meal_plan', arguments: { action: 'list_events' } });
-    return r.content[0].text.split('\n')[0];
-  });
-
   // Meal plan: list_labels
   await test('meal_plan → list_labels', async () => {
     const r = await client.callTool({ name: 'meal_plan', arguments: { action: 'list_labels' } });
     return r.content[0].text.split('\n')[0];
   });
 
-  // Recipe collections: list
+  // Meal plan: create_event → verify in list_events (with ID + date filter) → delete_event
+  // Use a far-future date to avoid collision with real events
+  const testEventDate = '2099-06-15';
+  const testEventDate2 = '2099-06-20';
+  let testEventId = null;
+  let testEventId2 = null;
+
+  await test(`meal_plan → create_event (${testEventDate})`, async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'create_event', date: testEventDate, title: '🧪 Integration Test Meal',
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Created')) throw new Error(text);
+    return text;
+  });
+
+  await test(`meal_plan → create_event (${testEventDate2})`, async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'create_event', date: testEventDate2, title: '🧪 Integration Test Meal 2',
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Created')) throw new Error(text);
+    return text;
+  });
+
+  await test('meal_plan → list_events shows created events with IDs', async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: { action: 'list_events' } });
+    const text = r.content[0].text;
+    if (!text.includes(testEventDate)) throw new Error(`Date ${testEventDate} not found in list_events output`);
+    if (!text.includes(testEventDate2)) throw new Error(`Date ${testEventDate2} not found in list_events output`);
+    if (!text.includes('(id:')) throw new Error('Event list missing (id: ...) field');
+
+    // Capture IDs for delete step
+    for (const line of text.split('\n')) {
+      const idMatch = line.match(/\(id: ([^)]+)\)/);
+      if (!idMatch) continue;
+      if (line.includes(testEventDate) && !testEventId) testEventId = idMatch[1];
+      if (line.includes(testEventDate2) && !testEventId2) testEventId2 = idMatch[1];
+    }
+    if (!testEventId) throw new Error(`Could not extract ID for event on ${testEventDate}`);
+    if (!testEventId2) throw new Error(`Could not extract ID for event on ${testEventDate2}`);
+    return `IDs captured: ${testEventId}, ${testEventId2}`;
+  });
+
+  await test('meal_plan → list_events with start_date filter', async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'list_events', start_date: testEventDate2,
+    }});
+    const text = r.content[0].text;
+    if (text.includes(testEventDate) && !text.includes(testEventDate2))
+      throw new Error(`start_date filter should exclude ${testEventDate}`);
+    if (!text.includes(testEventDate2)) throw new Error(`start_date filter should include ${testEventDate2}`);
+    return `start_date=${testEventDate2} correctly filtered`;
+  });
+
+  await test('meal_plan → list_events with end_date filter', async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'list_events', end_date: testEventDate,
+    }});
+    const text = r.content[0].text;
+    if (text.includes(testEventDate2)) throw new Error(`end_date filter should exclude ${testEventDate2}`);
+    if (!text.includes(testEventDate)) throw new Error(`end_date filter should include ${testEventDate}`);
+    return `end_date=${testEventDate} correctly filtered`;
+  });
+
+  await test(`meal_plan → delete_event (${testEventDate})`, async () => {
+    if (!testEventId) throw new Error('No event ID captured — cannot delete');
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'delete_event', event_id: testEventId,
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Deleted')) throw new Error(text);
+    return text;
+  });
+
+  await test(`meal_plan → delete_event (${testEventDate2})`, async () => {
+    if (!testEventId2) throw new Error('No event ID captured — cannot delete');
+    const r = await client.callTool({ name: 'meal_plan', arguments: {
+      action: 'delete_event', event_id: testEventId2,
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Deleted')) throw new Error(text);
+    return text;
+  });
+
+  await test('meal_plan → deleted events no longer appear in list_events', async () => {
+    const r = await client.callTool({ name: 'meal_plan', arguments: { action: 'list_events' } });
+    const text = r.content[0].text;
+    if (text.includes(testEventDate)) throw new Error(`${testEventDate} still appears after deletion`);
+    if (text.includes(testEventDate2)) throw new Error(`${testEventDate2} still appears after deletion`);
+    return 'Events absent from list after deletion';
+  });
+
+  // Recipe collections: list + create lifecycle
   await test('recipe_collections → list', async () => {
     const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'list' } });
     return r.content[0].text.split('\n')[0];
+  });
+
+  const testCollection = `🧪 Test Collection ${Date.now()}`;
+  await test(`recipe_collections → create ("${testCollection}")`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: {
+      action: 'create', name: testCollection,
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Created')) throw new Error(text);
+    return text;
+  });
+
+  await test(`recipe_collections → created collection appears in list`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'list' } });
+    const text = r.content[0].text;
+    if (!text.includes(testCollection)) throw new Error(`"${testCollection}" not found in collections list`);
+    return `Collection "${testCollection}" confirmed`;
+  });
+
+  await test(`recipe_collections → delete ("${testCollection}")`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'delete', name: testCollection } });
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Deleted')) throw new Error(text);
+    return text;
+  });
+
+  await test(`recipe_collections → deleted collection absent from list`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'list' } });
+    const text = r.content[0].text;
+    if (text.includes(testCollection)) throw new Error(`"${testCollection}" still appears after deletion`);
+    return 'Collection absent from list after deletion';
   });
 
   // Invalid action test — SDK validates enum at protocol level, so expect a thrown error

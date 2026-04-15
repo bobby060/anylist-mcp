@@ -49,6 +49,7 @@ export function register(server, getClient) {
             if (r.prepTime) parts.push(`prep: ${r.prepTime}min`);
             if (r.cookTime) parts.push(`cook: ${r.cookTime}min`);
             if (r.servings) parts.push(`serves: ${r.servings}`);
+            parts.push(`(id: ${r.identifier})`);
             return parts.join(' | ');
           }).join('\n');
           return textResponse(`Recipes (${recipes.length}):\n${list}`);
@@ -57,7 +58,7 @@ export function register(server, getClient) {
           let getRecipeName = name;
           if (!getRecipeName) getRecipeName = await elicitRequiredField("name", "Which recipe would you like to view?");
           const recipe = await client.getRecipeDetails(getRecipeName);
-          let text = `# ${recipe.name}\n\n`;
+          let text = `# ${recipe.name}\n\nID: ${recipe.identifier}\n`;
           if (recipe.sourceName) text += `Source: ${recipe.sourceName}\n`;
           if (recipe.sourceUrl) text += `URL: ${recipe.sourceUrl}\n`;
           if (recipe.rating) text += `Rating: ${'⭐'.repeat(recipe.rating)}\n`;
