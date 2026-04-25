@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
+import bcrypt from "bcrypt";
 import {
   getOAuthClient,
   registerOAuthClient,
+  getOAuthClientWithSecret,
   saveOAuthCode,
   consumeOAuthCode,
   saveOAuthTokens,
@@ -43,9 +45,9 @@ router.get("/.well-known/oauth-authorization-server", (req, res) => {
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: ["authorization_code", "refresh_token", "client_credentials"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
   });
 });
 
@@ -102,7 +104,10 @@ router.get("/oauth/authorize", (req, res) => {
 // ── Token Endpoint ────────────────────────────────────────────────────────────
 
 router.post("/oauth/token", async (req, res) => {
-  const { grant_type } = req.body || {};
+  const body = req.body || {};
+  const { grant_type, client_id } = body;
+  const bodyKeys = Object.keys(body);
+  console.log(`[oauth] token request grant_type=${grant_type} client_id=${client_id ? client_id.slice(0, 8) + "…" : "none"} fields=${bodyKeys.join(",")}`);
 
   if (grant_type === "authorization_code") {
     return handleAuthCodeGrant(req, res);
@@ -110,6 +115,10 @@ router.post("/oauth/token", async (req, res) => {
   if (grant_type === "refresh_token") {
     return handleRefreshGrant(req, res);
   }
+  if (grant_type === "client_credentials") {
+    return handleClientCredentialsGrant(req, res);
+  }
+  console.log(`[oauth] ANOMALOUS token request: unknown grant_type=${grant_type} ip=${req.ip} fields=${bodyKeys.join(",")}`);
   return res.status(400).json({ error: "unsupported_grant_type" });
 });
 
@@ -185,6 +194,45 @@ async function handleRefreshGrant(req, res) {
     expires_in: 3600,
     refresh_token: newRefreshToken,
     scope: tokenRow.scope || "mcp",
+  });
+}
+
+async function handleClientCredentialsGrant(req, res) {
+  const { client_id, client_secret } = req.body;
+
+  if (!client_id || !client_secret) {
+    console.log(`[oauth] client_credentials missing fields: client_id=${!!client_id} client_secret=${!!client_secret}`);
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing client_id or client_secret" });
+  }
+
+  const client = getOAuthClientWithSecret(client_id);
+  if (!client || !client.client_secret_hash) {
+    console.log(`[oauth] client_credentials client not found or not confidential: client_id=${client_id.slice(0, 8)}…`);
+    return res.status(401).json({ error: "invalid_client" });
+  }
+
+  const valid = await bcrypt.compare(client_secret, client.client_secret_hash);
+  if (!valid) {
+    console.log(`[oauth] client_credentials secret mismatch: client_id=${client_id.slice(0, 8)}…`);
+    return res.status(401).json({ error: "invalid_client" });
+  }
+
+  const accessToken = randomBytes(32).toString("hex");
+  const refreshToken = randomBytes(32).toString("hex");
+  saveOAuthTokens({
+    accessToken,
+    refreshToken,
+    userId: client.user_id,
+    clientId: client_id,
+    scope: "mcp",
+  });
+
+  console.log(`[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
+  res.json({
+    access_token: accessToken,
+    token_type: "Bearer",
+    expires_in: 3600,
+    scope: "mcp",
   });
 }
 
@@ -316,12 +364,19 @@ function issueCodeAndRedirect(req, res, userId, oauth) {
 export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
+    console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} auth=${auth ? auth.slice(0, 20) + "…" : "none"} ip=${req.ip}`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}"`);
     return res.status(401).json({ error: "unauthorized" });
   }
   const token = auth.slice(7);
   const record = getTokenRecord(token);
-  if (!record || record.expires_at < Math.floor(Date.now() / 1000)) {
+  if (!record) {
+    console.log(`[oauth] ANOMALOUS unknown bearer token ip=${req.ip}`);
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
+    return res.status(401).json({ error: "invalid_token" });
+  }
+  if (record.expires_at < Math.floor(Date.now() / 1000)) {
+    console.log(`[oauth] ANOMALOUS expired bearer token user_id=${record.user_id} ip=${req.ip}`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }

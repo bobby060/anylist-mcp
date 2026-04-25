@@ -41,6 +41,18 @@ function migrate(db) {
       redirect_uri TEXT,
       created_at   INTEGER NOT NULL DEFAULT (unixepoch())
     );
+  `);
+
+  // Additive migrations — safe to run on existing DBs
+  for (const sql of [
+    "ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT",
+    "ALTER TABLE oauth_clients ADD COLUMN user_id TEXT REFERENCES users(id)",
+    "ALTER TABLE oauth_clients ADD COLUMN client_name TEXT",
+  ]) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
+  db.exec(`
 
     CREATE TABLE IF NOT EXISTS oauth_codes (
       code         TEXT PRIMARY KEY,
@@ -177,6 +189,18 @@ export function registerOAuthClient({ clientId, redirectUri }) {
     INSERT OR IGNORE INTO oauth_clients (client_id, redirect_uri) VALUES (?, ?)
   `).run(clientId, redirectUri || null);
   return getOAuthClient(clientId);
+}
+
+export function createConfidentialClient({ clientId, clientSecretHash, userId, clientName }) {
+  getDb().prepare(`
+    INSERT INTO oauth_clients (client_id, client_secret_hash, user_id, client_name)
+    VALUES (?, ?, ?, ?)
+  `).run(clientId, clientSecretHash, userId, clientName || null);
+  return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
+}
+
+export function getOAuthClientWithSecret(clientId) {
+  return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
 }
 
 // ── OAuth code queries ────────────────────────────────────────────────────────
