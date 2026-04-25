@@ -38,11 +38,12 @@ export function register(server, getClient) {
       name: z.string().optional().describe("Item name (required for add_item, check_item, delete_item)"),
       quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
+      category: z.string().optional().describe("Category for the item (add_item only). Use system category strings: produce, dairy, meat, bakery, beverages, breakfast-and-cereal, condiments-oils-and-salad-dressings, cooking-and-baking, deli, frozen-foods, grains-pasta-and-side-dishes, health-and-personal-care, household-and-cleaning, pet-supplies, seafood, snacks-cookies-and-candy, soups-and-canned-goods, wine-beer-spirits, baby, other. Infer the correct category from the item name when not specified by the user."),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
     }
   }, async (params) => {
-    const { action, list_name, name, quantity, notes, include_checked, include_notes } = params;
+    const { action, list_name, name, quantity, notes, category, include_checked, include_notes } = params;
     try {
       const client = await getClient();
       switch (action) {
@@ -90,8 +91,9 @@ export function register(server, getClient) {
           let itemName = name;
           if (!itemName) itemName = await elicitRequiredField("name", "What item would you like to add?");
           await client.connect(list_name);
-          await client.addItem(itemName, quantity || 1, notes || null);
-          return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"`);
+          const resolvedCategory = await client.addItem(itemName, quantity || 1, notes || null, category || null);
+          const catSuffix = resolvedCategory ? ` [${resolvedCategory}]` : '';
+          return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"${catSuffix}`);
         }
         case "check_item": {
           let itemName = name;

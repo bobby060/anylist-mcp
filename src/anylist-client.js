@@ -104,7 +104,7 @@ class AnyListClient {
   }
 
   // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null) {
+  async addItem(itemName, quantity = 1, notes = null, category = null) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -112,55 +112,80 @@ class AnyListClient {
     }
 
     try {
+      const categoryMap = this._buildCategoryMap();
+
+      // Resolve categoryMatchId: caller-supplied → recent items (cached, no network call) → categorized-items API
+      let categoryMatchId = null;
+      if (category) {
+        categoryMatchId = category;
+      } else {
+        const itemNameLower = itemName.toLowerCase();
+        const recentMap = this._buildRecentItemsMap();
+        if (recentMap[itemNameLower]) {
+          categoryMatchId = recentMap[itemNameLower];
+        } else {
+          const categorizedItems = await this.getCategorizedItems();
+          const catEntry = categorizedItems.find(i => i.name === itemNameLower && i.listId === this.targetList.identifier)
+            || categorizedItems.find(i => i.name === itemNameLower && (!i.listId || i.listId === ''));
+          if (catEntry) categoryMatchId = catEntry.categoryMatchId;
+        }
+      }
+
+      // Persist caller-supplied category for future lookups
+      if (category) {
+        await this.categorizeItem({ itemName, categoryMatchId: category });
+      }
+
+      let effectiveCategoryMatchId = categoryMatchId;
+
       // First, check if item already exists
       const existingItem = this.targetList.getItemByName(itemName);
 
       if (existingItem) {
-        // Item exists - check if it's checked (completed)
         if (existingItem.checked) {
-          // Uncheck the item to make it active again
           existingItem.checked = false;
-          existingItem.quantity = quantity; // Update quantity if needed
-          if (notes !== null) {
-            existingItem.details = notes;
+          existingItem.quantity = quantity;
+          if (notes !== null) existingItem.details = notes;
+          // Apply lookup result only if item has no meaningful category
+          if (categoryMatchId && (!existingItem.categoryMatchId || existingItem.categoryMatchId === 'other')) {
+            existingItem.categoryMatchId = categoryMatchId;
           }
-
           console.error(`Unchecked existing item: ${existingItem.name}`);
           existingItem.save();
         } else {
-
-          // Item already exists and is unchecked, no action needed
           console.error(`Item "${itemName}" already exists and is active`);
           existingItem.quantity = quantity;
-          if (notes !== null) {
-            existingItem.details = notes;
+          if (notes !== null) existingItem.details = notes;
+          if (categoryMatchId && (!existingItem.categoryMatchId || existingItem.categoryMatchId === 'other')) {
+            existingItem.categoryMatchId = categoryMatchId;
           }
-
           existingItem.save();
         }
+        // Read back the item's actual categoryMatchId (may have been "produce" from prior web categorization)
+        effectiveCategoryMatchId = existingItem.categoryMatchId;
       } else {
-        // Item doesn't exist, create new one
         const itemOptions = { name: itemName };
-        if (notes !== null) {
-          itemOptions.details = notes;
-        }
+        if (notes !== null) itemOptions.details = notes;
 
         const newItem = this.client.createItem(itemOptions);
+        if (categoryMatchId) newItem.categoryMatchId = categoryMatchId;
         await this.targetList.addItem(newItem);
 
-        // Set quantity and notes after adding (can't be done via _encode)
         if (quantity !== 1 || notes !== null) {
-          if (quantity !== 1) {
-            newItem.quantity = quantity;
-          }
-          if (notes !== null) {
-            newItem.details = notes;
-          }
+          if (quantity !== 1) newItem.quantity = quantity;
+          if (notes !== null) newItem.details = notes;
           await newItem.save();
         }
 
         console.error(`Added new item: ${newItem.name}`);
+        effectiveCategoryMatchId = newItem.categoryMatchId;
       }
+
+      // Resolve to human-readable name; treat 'other' as unset
+      const categoryName = effectiveCategoryMatchId && effectiveCategoryMatchId !== 'other'
+        ? (categoryMap[effectiveCategoryMatchId] || effectiveCategoryMatchId)
+        : null;
+      return categoryName;
 
     } catch (error) {
       const wrappedError = new Error(`Failed to add item "${itemName}": ${error.message}`);
@@ -235,8 +260,9 @@ class AnyListClient {
     }
 
     try {
-      // Build category ID to name map from the response data
       const categoryMap = this._buildCategoryMap();
+      const rulesMap = this._buildCategorizationRulesMap();
+      const recentMap = this._buildRecentItemsMap();
 
       // Get all items from the list
       const items = this.targetList.items || [];
@@ -248,11 +274,13 @@ class AnyListClient {
 
       // Map to a clean format
       return filteredItems.map(item => {
+        const nameLower = item.name?.toLowerCase();
+        const effectiveCatId = item.categoryMatchId || rulesMap[nameLower] || recentMap[nameLower];
         const result = {
           name: item.name,
           quantity: typeof item.quantity === 'number' ? item.quantity : 1,
           checked: item.checked || false,
-          category: categoryMap[item.categoryMatchId] || 'other'
+          category: categoryMap[effectiveCatId] || 'other'
         };
         if (includeNotes && item.details) {
           result.note = item.details;
@@ -269,15 +297,18 @@ class AnyListClient {
   _buildCategoryMap() {
     const categoryMap = {};
     try {
-      // Access the raw user data from the client to get category groups
       const userData = this.client._userData;
-      if (userData && userData.shoppingListsResponse && userData.shoppingListsResponse.categoryGroupResponses) {
-        for (const groupResponse of userData.shoppingListsResponse.categoryGroupResponses) {
-          if (groupResponse.categoryGroup && groupResponse.categoryGroup.categories) {
-            for (const category of groupResponse.categoryGroup.categories) {
-              if (category.identifier && category.name) {
-                categoryMap[category.identifier] = category.name;
-              }
+      const listResponses = userData?.shoppingListsResponse?.listResponses || [];
+      for (const lr of listResponses) {
+        for (const gr of lr.categoryGroupResponses || []) {
+          for (const cat of gr.categoryGroup?.categories || []) {
+            if (cat.identifier && cat.name) {
+              categoryMap[cat.identifier] = cat.name;
+            }
+            // Also map the system category string (e.g. 'produce') so items
+            // categorised via the auto-categorise service resolve correctly.
+            if (cat.systemCategory && cat.name) {
+              categoryMap[cat.systemCategory] = cat.name;
             }
           }
         }
@@ -286,6 +317,49 @@ class AnyListClient {
       console.error(`Failed to build category map: ${error.message}`);
     }
     return categoryMap;
+  }
+
+  _buildCategorizationRulesMap() {
+    const rulesMap = {};
+    try {
+      const userData = this.client._userData;
+      const listResponses = userData?.shoppingListsResponse?.listResponses || [];
+      for (const lr of listResponses) {
+        if (lr.listId !== this.targetList?.identifier) continue;
+        for (const rule of lr.categorizationRules || []) {
+          if (rule.itemName && rule.categoryId) {
+            rulesMap[rule.itemName.toLowerCase()] = rule.categoryId;
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to build categorization rules map: ${error.message}`);
+    }
+    return rulesMap;
+  }
+
+  // Build a map of itemName.toLowerCase() → categoryMatchId from cached recent items.
+  // Checks the current list first, then falls back to other lists.
+  _buildRecentItemsMap() {
+    const recentItems = this.client.recentItems || {};
+    const result = {};
+    // Other lists first (lower priority), then current list overwrites
+    for (const [listId, items] of Object.entries(recentItems)) {
+      if (listId === this.targetList?.identifier) continue;
+      for (const item of items) {
+        if (item.name && item.categoryMatchId && item.categoryMatchId !== 'other') {
+          result[item.name.toLowerCase()] = item.categoryMatchId;
+        }
+      }
+    }
+    // Current list has highest priority
+    const currentListItems = recentItems[this.targetList?.identifier] || [];
+    for (const item of currentListItems) {
+      if (item.name && item.categoryMatchId && item.categoryMatchId !== 'other') {
+        result[item.name.toLowerCase()] = item.categoryMatchId;
+      }
+    }
+    return result;
   }
 
   // ===== RECIPES =====
@@ -659,6 +733,63 @@ class AnyListClient {
       console.error(`Deleted recipe collection: ${name}`);
     } catch (error) {
       throw new Error(`Failed to delete recipe collection: ${error.message}`);
+    }
+  }
+
+  // ===== CATEGORIES =====
+
+  async getListCategories() {
+    if (!this.targetList) throw new Error('Not connected to any list. Call connect() first.');
+    try {
+      const userData = this.client._userData;
+      const listResponses = userData?.shoppingListsResponse?.listResponses || [];
+      const groups = [];
+      for (const lr of listResponses) {
+        if (lr.listId !== this.targetList.identifier) continue;
+        for (const gr of lr.categoryGroupResponses || []) {
+          const cg = gr.categoryGroup;
+          if (!cg) continue;
+          groups.push({
+            identifier: cg.identifier,
+            name: cg.name || null,
+            defaultCategoryId: cg.defaultCategoryId || null,
+            categories: (cg.categories || []).map(c => ({
+              identifier: c.identifier,
+              name: c.name,
+              icon: c.icon || null,
+              systemCategory: c.systemCategory || null,
+              sortIndex: c.sortIndex ?? 0,
+            })),
+          });
+        }
+      }
+      return groups;
+    } catch (error) {
+      throw new Error(`Failed to get list categories: ${error.message}`);
+    }
+  }
+
+  async categorizeItem({ itemName, categoryMatchId, listId = null }) {
+    if (!this.client) throw new Error('Not connected. Call connect() first.');
+    try {
+      const effectiveListId = listId !== null ? listId : (this.targetList?.identifier ?? '');
+      await this.client.categorizeItem({ itemName, listId: effectiveListId, categoryMatchId });
+    } catch (error) {
+      throw new Error(`Failed to categorize item: ${error.message}`);
+    }
+  }
+
+  async getCategorizedItems() {
+    if (!this.client) throw new Error('Not connected. Call connect() first.');
+    try {
+      const items = await this.client.getCategorizedItems();
+      return items.map(i => ({
+        name: i.name,
+        categoryMatchId: i.categoryMatchId,
+        listId: i.listId || '',
+      }));
+    } catch (error) {
+      throw new Error(`Failed to get categorized items: ${error.message}`);
     }
   }
 
