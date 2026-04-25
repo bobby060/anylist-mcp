@@ -41,14 +41,49 @@ function migrate(db) {
       redirect_uri TEXT,
       created_at   INTEGER NOT NULL DEFAULT (unixepoch())
     );
+  `);
+
+  // Additive migrations — safe to run on existing DBs
+  for (const sql of [
+    "ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT",
+    "ALTER TABLE oauth_clients ADD COLUMN user_id TEXT REFERENCES users(id)",
+    "ALTER TABLE oauth_clients ADD COLUMN client_name TEXT",
+  ]) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
+  // Make code_challenge nullable to support confidential clients that skip PKCE.
+  // SQLite can't ALTER COLUMN, so recreate the table if the old NOT NULL constraint is still in place.
+  const ccNotNull = db.prepare("PRAGMA table_info(oauth_codes)").all()
+    .find(c => c.name === "code_challenge")?.notnull === 1;
+  if (ccNotNull) {
+    db.exec(`
+      CREATE TABLE oauth_codes_new (
+        code              TEXT PRIMARY KEY,
+        client_id         TEXT NOT NULL,
+        user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        redirect_uri      TEXT NOT NULL,
+        code_challenge    TEXT,
+        challenge_method  TEXT,
+        scope             TEXT,
+        expires_at        INTEGER NOT NULL,
+        created_at        INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      INSERT OR IGNORE INTO oauth_codes_new SELECT * FROM oauth_codes;
+      DROP TABLE oauth_codes;
+      ALTER TABLE oauth_codes_new RENAME TO oauth_codes;
+    `);
+  }
+
+  db.exec(`
 
     CREATE TABLE IF NOT EXISTS oauth_codes (
       code         TEXT PRIMARY KEY,
       client_id    TEXT NOT NULL,
       user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       redirect_uri TEXT NOT NULL,
-      code_challenge      TEXT NOT NULL,
-      challenge_method    TEXT NOT NULL DEFAULT 'S256',
+      code_challenge    TEXT,
+      challenge_method  TEXT,
       scope        TEXT,
       expires_at   INTEGER NOT NULL,
       created_at   INTEGER NOT NULL DEFAULT (unixepoch())
@@ -177,6 +212,18 @@ export function registerOAuthClient({ clientId, redirectUri }) {
     INSERT OR IGNORE INTO oauth_clients (client_id, redirect_uri) VALUES (?, ?)
   `).run(clientId, redirectUri || null);
   return getOAuthClient(clientId);
+}
+
+export function createConfidentialClient({ clientId, clientSecretHash, userId, clientName }) {
+  getDb().prepare(`
+    INSERT INTO oauth_clients (client_id, client_secret_hash, user_id, client_name)
+    VALUES (?, ?, ?, ?)
+  `).run(clientId, clientSecretHash, userId, clientName || null);
+  return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
+}
+
+export function getOAuthClientWithSecret(clientId) {
+  return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
 }
 
 // ── OAuth code queries ────────────────────────────────────────────────────────

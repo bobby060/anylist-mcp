@@ -14,6 +14,7 @@ RUN apk add --no-cache python3 make g++
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY anylist-js/ ./anylist-js/
 # Fail fast if the submodule wasn't initialized before building
 RUN test -f anylist-js/lib/index.js || \
