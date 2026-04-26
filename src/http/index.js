@@ -153,11 +153,14 @@ function createMcpServer(userId) {
 async function handleMcp(req, res) {
   try {
     const sessionId = req.headers["mcp-session-id"];
-    let mcpSession = sessionId ? mcpSessions.get(sessionId) : null;
+    // Initialize requests always create a new session — never route to an existing one.
+    // This handles clients (e.g. HA) that send a second initialize on a stale session ID.
+    const mcpSession = !isInitializeRequest(req.body) && sessionId
+      ? mcpSessions.get(sessionId)
+      : null;
 
     if (!mcpSession) {
-      // Check if this is an initialize request; if not and no session exists, reject
-      if (sessionId || !isInitializeRequest(req.body)) {
+      if (!isInitializeRequest(req.body)) {
         return res.status(404).json({ error: "Session not found. Send an initialize request first." });
       }
 
