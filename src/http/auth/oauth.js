@@ -51,11 +51,14 @@ router.get("/.well-known/oauth-authorization-server", (req, res) => {
   });
 });
 
-// MCP protected resource metadata
-router.get("/.well-known/oauth-protected-resource", (req, res) => {
+// MCP protected resource metadata (RFC 9728)
+// Handle both /.well-known/oauth-protected-resource and /.well-known/oauth-protected-resource/<path>
+// so that HA (which appends the resource path per RFC 9728) gets the right resource URL.
+router.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/*path"], (req, res) => {
   const base = baseUrl(req);
+  const suffix = req.params.path ? `/${req.params.path}` : "";
   res.json({
-    resource: base,
+    resource: `${base}${suffix}`,
     authorization_servers: [base],
     bearer_methods_supported: ["header"],
     scopes_supported: ["mcp"],

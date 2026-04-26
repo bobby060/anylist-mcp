@@ -223,6 +223,7 @@ async function handleSseMessage(req, res) {
 }
 
 app.get("/sse",       requireBearerToken, makeSseConnectHandler("/messages"));
+app.post("/sse",      requireBearerToken, handleSseMessage); // triggers auth discovery on POST
 app.post("/messages", requireBearerToken, handleSseMessage);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
