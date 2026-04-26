@@ -1,6 +1,6 @@
 # Home Assistant Setup
 
-This guide connects the anylist-mcp HTTP server to Home Assistant as an MCP tool server. Home Assistant uses the OAuth 2.0 `client_credentials` grant — no browser login required.
+This guide connects the anylist-mcp HTTP server to Home Assistant as an MCP tool server. Home Assistant uses the OAuth 2.0 authorization code flow with a confidential client (client ID + secret), so you'll go through a one-time browser login to authorize access.
 
 ## Prerequisites
 
@@ -41,6 +41,7 @@ Add the anylist-mcp server via the **Settings → Devices & Services → Add Int
 
 For versions that support MCP client configuration via YAML:
 
+```yaml
 url: "https://<your-tunnel-domain>/mcp"
 client_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 client_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -64,4 +65,4 @@ Restart Home Assistant, then open **Developer Tools → Template** and try calli
 | `unauthorized` on MCP requests | Token expired or the access token isn't being sent as a Bearer header |
 | Server not reachable | Tunnel is down — check `docker compose logs cloudflared` |
 
-Token lifetime is 1 hour. Home Assistant should automatically refresh using the same `client_credentials` grant before each request.
+Token lifetime is 1 hour. Home Assistant will automatically refresh using the stored refresh token — no need to re-authorize.

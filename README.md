@@ -85,7 +85,7 @@ docker compose --profile cloudflare-temp up --build
 
 ## Generating OAuth Client Credentials (for Home Assistant / headless clients)
 
-Some MCP clients — like Home Assistant — can't complete a browser-based OAuth flow. For these, the HTTP server supports the OAuth 2.0 `client_credentials` grant. You create a confidential client once and store the resulting `client_id` + `client_secret` in your integration config.
+Some MCP clients — like Home Assistant — require a pre-registered `client_id` and `client_secret` rather than dynamic client registration. You create a confidential client once, then enter the credentials in your integration. Home Assistant will still send you through a one-time browser login (authorization code flow) to link your account.
 
 **Prerequisites:** the HTTP server must already be running and you must have an account on it.
 
