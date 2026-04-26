@@ -9,6 +9,7 @@ import { readFileSync } from "fs";
 import { randomBytes } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
@@ -138,6 +139,12 @@ app.use(onboardingRouter);
 
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
+function createMcpServer(userId) {
+  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "2.0.0" });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId));
+  return mcpServer;
+}
+
 // MCP endpoint — available at both / and /mcp.
 // All specific routes above (/health, /login, /oauth/*, etc.) take precedence.
 async function handleMcp(req, res) {
@@ -153,8 +160,7 @@ async function handleMcp(req, res) {
 
       // Create a new MCP session for this user
       const userId = req.userId;
-      const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "2.0.0" });
-      registerAllTools(mcpServer, () => getOrCreateSession(userId));
+      const mcpServer = createMcpServer(userId);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomBytes(16).toString("hex"),
@@ -184,6 +190,42 @@ async function handleMcp(req, res) {
 
 app.all("/", requireBearerToken, handleMcp);
 app.all("/mcp", requireBearerToken, handleMcp);
+
+// ── MCP SSE transport endpoints (for Home Assistant and other SSE-only clients) ─
+
+function makeSseConnectHandler(postEndpoint) {
+  return async function (req, res) {
+    try {
+      const transport = new SSEServerTransport(postEndpoint, res);
+      const sessionId = transport.sessionId;
+      const mcpServer = createMcpServer(req.userId);
+      mcpSessions.set(sessionId, { server: mcpServer, transport });
+      transport.onclose = () => { mcpSessions.delete(sessionId); };
+      await mcpServer.connect(transport); // connect() calls transport.start() internally
+    } catch (err) {
+      console.error("SSE connect error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+    }
+  };
+}
+
+async function handleSseMessage(req, res) {
+  try {
+    const mcpSession = req.query.sessionId ? mcpSessions.get(req.query.sessionId) : null;
+    if (!mcpSession || !(mcpSession.transport instanceof SSEServerTransport)) {
+      return res.status(404).json({ error: "SSE session not found." });
+    }
+    await mcpSession.transport.handlePostMessage(req, res, req.body);
+  } catch (err) {
+    console.error("SSE message error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+app.get("/sse",           requireBearerToken, makeSseConnectHandler("/messages"));
+app.get("/mcp/sse",       requireBearerToken, makeSseConnectHandler("/mcp/messages"));
+app.post("/messages",     requireBearerToken, handleSseMessage);
+app.post("/mcp/messages", requireBearerToken, handleSseMessage);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
 

@@ -63,7 +63,7 @@ router.get("/.well-known/oauth-protected-resource", (req, res) => {
 });
 
 // ── Dynamic Client Registration (RFC 7591) ────────────────────────────────────
-
+// Home ASsistent expects /register, but Claude expects /oauth/register, so we support both.
 router.post(["/oauth/register", "/register"], (req, res) => {
   const { redirect_uris, client_name } = req.body || {};
   const clientId = randomUUID();
@@ -81,6 +81,7 @@ router.post(["/oauth/register", "/register"], (req, res) => {
 });
 
 // ── Authorization Endpoint ────────────────────────────────────────────────────
+// Home ASsistent expects /authorize, but Claude expects /oauth/authorize, so we support both.
 
 router.get(["/oauth/authorize", "/authorize"], (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope } = req.query;
