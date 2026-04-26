@@ -384,7 +384,7 @@ export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
     console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} auth=${auth ? auth.slice(0, 20) + "…" : "none"} ip=${req.ip}`);
-    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}"`);
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", resource_metadata="${baseUrl(req)}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ error: "unauthorized" });
   }
   const token = auth.slice(7);
