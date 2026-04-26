@@ -96,10 +96,10 @@ docker compose exec anylist-mcp node scripts/create-client.js you@example.com "H
 
 This prints a `client_id` and `client_secret`. **Save the secret immediately** — it is hashed in the database and cannot be retrieved later.
 
-The token endpoint is:
+The server URL (what you enter in HA) is:
 
 ```
-https://<your-tunnel-domain>/oauth/token
+https://<your-tunnel-domain>
 ```
 
 See **[docs/home-assistant.md](docs/home-assistant.md)** for step-by-step Home Assistant setup.

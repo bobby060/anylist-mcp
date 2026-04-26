@@ -127,6 +127,7 @@ app.get("/health", (req, res) => {
 // ── OAuth + onboarding routes ─────────────────────────────────────────────────
 
 app.use(oauthRouter);
+app.use("/mcp", oauthRouter);
 app.use(onboardingRouter);
 
 // ── MCP Streamable HTTP endpoint ──────────────────────────────────────────────
@@ -137,9 +138,9 @@ app.use(onboardingRouter);
 
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
-// MCP endpoint is at the root path — Claude connects to the configured URL directly.
+// MCP endpoint — available at both / and /mcp.
 // All specific routes above (/health, /login, /oauth/*, etc.) take precedence.
-app.all("/", requireBearerToken, async (req, res) => {
+async function handleMcp(req, res) {
   try {
     const sessionId = req.headers["mcp-session-id"];
     let mcpSession = sessionId ? mcpSessions.get(sessionId) : null;
@@ -179,7 +180,10 @@ app.all("/", requireBearerToken, async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   }
-});
+}
+
+app.all("/", requireBearerToken, handleMcp);
+app.all("/mcp", requireBearerToken, handleMcp);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
 

@@ -31,7 +31,7 @@ const router = Router();
 // needing to know its public URL at startup.
 function baseUrl(req) {
   if (process.env.BASE_URL) return process.env.BASE_URL;
-  if (req) return `${req.protocol}://${req.get("host")}`;
+  if (req) return `${req.protocol}://${req.get("host")}${req.baseUrl || ""}`;
   return "http://localhost:3000";
 }
 

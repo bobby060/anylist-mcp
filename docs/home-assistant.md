@@ -42,7 +42,7 @@ Add the anylist-mcp server via the **Settings → Devices & Services → Add Int
 For versions that support MCP client configuration via YAML:
 
 ```yaml
-url: "https://<your-tunnel-domain>/mcp"
+url: "https://<your-tunnel-domain>"
 client_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 client_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
