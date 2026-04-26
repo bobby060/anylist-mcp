@@ -222,10 +222,8 @@ async function handleSseMessage(req, res) {
   }
 }
 
-app.get("/sse",           requireBearerToken, makeSseConnectHandler("/messages"));
-app.get("/mcp/sse",       requireBearerToken, makeSseConnectHandler("/mcp/messages"));
-app.post("/messages",     requireBearerToken, handleSseMessage);
-app.post("/mcp/messages", requireBearerToken, handleSseMessage);
+app.get("/sse",       requireBearerToken, makeSseConnectHandler("/messages"));
+app.post("/messages", requireBearerToken, handleSseMessage);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
 
