@@ -71,7 +71,10 @@ app.use(session({
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
-    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}`);
+    const body = req.method === "POST" && (req.path === "/sse" || req.path === "/mcp") && req.body
+      ? " body:" + JSON.stringify(req.body).slice(0, 200)
+      : "";
+    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}${body}`);
   });
   next();
 });
@@ -223,7 +226,7 @@ async function handleSseMessage(req, res) {
 }
 
 app.get("/sse",       requireBearerToken, makeSseConnectHandler("/messages"));
-app.post("/sse",      requireBearerToken, handleSseMessage); // triggers auth discovery on POST
+app.post("/sse",      requireBearerToken, handleMcp); // HA uses Streamable HTTP at this URL
 app.post("/messages", requireBearerToken, handleSseMessage);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
