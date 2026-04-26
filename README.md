@@ -1,6 +1,6 @@
 # Unofficial AnyList MCP Server
 
-An MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, and meal planning — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, Claude Web/Mobile, or any MCP-compatible client.
+An MCP server that integrates with [AnyList](https://www.anylist.com/) — shopping lists, recipes, and meal planning — exposed via the Model Context Protocol. Works with Claude Desktop, Claude Code, Claude Web/Mobile, or any MCP-compatible client like Home Assistant MCP.
 
 Two deployment modes:
 - **Local (stdio)** — runs on your machine alongside Claude Desktop or Claude Code. Fastest setup, no server required.
