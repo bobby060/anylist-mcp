@@ -85,8 +85,15 @@ router.post("/oauth/register", (req, res) => {
 router.get("/oauth/authorize", (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope } = req.query;
 
-  if (!client_id || !code_challenge) {
-    return res.status(400).send("Missing required parameters: client_id, code_challenge");
+  if (!client_id) {
+    return res.status(400).send("Missing required parameter: client_id");
+  }
+
+  // Confidential clients (those with a client_secret) don't use PKCE
+  const clientRecord = getOAuthClientWithSecret(client_id);
+  const isConfidential = !!(clientRecord && clientRecord.client_secret_hash);
+  if (!isConfidential && !code_challenge) {
+    return res.status(400).send("Missing required parameter: code_challenge");
   }
 
   // Store OAuth params in session
@@ -123,10 +130,10 @@ router.post("/oauth/token", async (req, res) => {
 });
 
 async function handleAuthCodeGrant(req, res) {
-  const { code, redirect_uri, code_verifier, client_id } = req.body;
+  const { code, redirect_uri, code_verifier, client_id, client_secret } = req.body;
 
-  if (!code || !code_verifier) {
-    return res.status(400).json({ error: "invalid_request", error_description: "Missing code or code_verifier" });
+  if (!code) {
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing code" });
   }
 
   const codeRow = consumeOAuthCode(code);
@@ -134,17 +141,28 @@ async function handleAuthCodeGrant(req, res) {
     return res.status(400).json({ error: "invalid_grant", error_description: "Code invalid or expired" });
   }
 
-  // Verify PKCE
-  const expected = codeRow.code_challenge;
-  const method = codeRow.challenge_method;
-  let verifierHash;
-  if (method === "S256") {
-    verifierHash = createHash("sha256").update(code_verifier).digest("base64url");
+  if (code_verifier) {
+    // Public client: verify PKCE
+    const expected = codeRow.code_challenge;
+    const method = codeRow.challenge_method;
+    const verifierHash = method === "S256"
+      ? createHash("sha256").update(code_verifier).digest("base64url")
+      : code_verifier; // plain (discouraged)
+    if (verifierHash !== expected) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
+    }
+  } else if (client_id && client_secret) {
+    // Confidential client: verify client secret
+    const client = getOAuthClientWithSecret(client_id);
+    if (!client || !client.client_secret_hash || client_id !== codeRow.client_id) {
+      return res.status(401).json({ error: "invalid_client" });
+    }
+    const valid = await bcrypt.compare(client_secret, client.client_secret_hash);
+    if (!valid) {
+      return res.status(401).json({ error: "invalid_client" });
+    }
   } else {
-    verifierHash = code_verifier; // plain (discouraged)
-  }
-  if (verifierHash !== expected) {
-    return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing code_verifier or client credentials" });
   }
 
   const accessToken = randomBytes(32).toString("hex");
