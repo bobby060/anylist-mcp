@@ -64,7 +64,7 @@ router.get("/.well-known/oauth-protected-resource", (req, res) => {
 
 // ── Dynamic Client Registration (RFC 7591) ────────────────────────────────────
 
-router.post("/oauth/register", (req, res) => {
+router.post(["/oauth/register", "/register"], (req, res) => {
   const { redirect_uris, client_name } = req.body || {};
   const clientId = randomUUID();
   const redirectUri = Array.isArray(redirect_uris) ? redirect_uris[0] : redirect_uris || null;
@@ -82,7 +82,7 @@ router.post("/oauth/register", (req, res) => {
 
 // ── Authorization Endpoint ────────────────────────────────────────────────────
 
-router.get("/oauth/authorize", (req, res) => {
+router.get(["/oauth/authorize", "/authorize"], (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope } = req.query;
 
   if (!client_id) {
@@ -110,7 +110,7 @@ router.get("/oauth/authorize", (req, res) => {
 
 // ── Token Endpoint ────────────────────────────────────────────────────────────
 
-router.post("/oauth/token", async (req, res) => {
+router.post(["/oauth/token", "/token"], async (req, res) => {
   const body = req.body || {};
   const { grant_type, client_id } = body;
   const bodyKeys = Object.keys(body);
