@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
+import bcrypt from "bcrypt";
 import {
   getOAuthClient,
   registerOAuthClient,
+  getOAuthClientWithSecret,
   saveOAuthCode,
   consumeOAuthCode,
   saveOAuthTokens,
@@ -29,7 +31,7 @@ const router = Router();
 // needing to know its public URL at startup.
 function baseUrl(req) {
   if (process.env.BASE_URL) return process.env.BASE_URL;
-  if (req) return `${req.protocol}://${req.get("host")}`;
+  if (req) return `${req.protocol}://${req.get("host")}${req.baseUrl || ""}`;
   return "http://localhost:3000";
 }
 
@@ -43,17 +45,20 @@ router.get("/.well-known/oauth-authorization-server", (req, res) => {
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: ["authorization_code", "refresh_token", "client_credentials"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
   });
 });
 
-// MCP protected resource metadata
-router.get("/.well-known/oauth-protected-resource", (req, res) => {
+// MCP protected resource metadata (RFC 9728)
+// Handle both /.well-known/oauth-protected-resource and /.well-known/oauth-protected-resource/<path>
+// so that HA (which appends the resource path per RFC 9728) gets the right resource URL.
+router.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/*path"], (req, res) => {
   const base = baseUrl(req);
+  const suffix = req.params.path ? `/${req.params.path}` : "";
   res.json({
-    resource: base,
+    resource: `${base}${suffix}`,
     authorization_servers: [base],
     bearer_methods_supported: ["header"],
     scopes_supported: ["mcp"],
@@ -61,8 +66,8 @@ router.get("/.well-known/oauth-protected-resource", (req, res) => {
 });
 
 // ── Dynamic Client Registration (RFC 7591) ────────────────────────────────────
-
-router.post("/oauth/register", (req, res) => {
+// Home ASsistent expects /register, but Claude expects /oauth/register, so we support both.
+router.post(["/oauth/register", "/register"], (req, res) => {
   const { redirect_uris, client_name } = req.body || {};
   const clientId = randomUUID();
   const redirectUri = Array.isArray(redirect_uris) ? redirect_uris[0] : redirect_uris || null;
@@ -79,12 +84,20 @@ router.post("/oauth/register", (req, res) => {
 });
 
 // ── Authorization Endpoint ────────────────────────────────────────────────────
+// Home ASsistent expects /authorize, but Claude expects /oauth/authorize, so we support both.
 
-router.get("/oauth/authorize", (req, res) => {
+router.get(["/oauth/authorize", "/authorize"], (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope } = req.query;
 
-  if (!client_id || !code_challenge) {
-    return res.status(400).send("Missing required parameters: client_id, code_challenge");
+  if (!client_id) {
+    return res.status(400).send("Missing required parameter: client_id");
+  }
+
+  // Confidential clients (those with a client_secret) don't use PKCE
+  const clientRecord = getOAuthClientWithSecret(client_id);
+  const isConfidential = !!(clientRecord && clientRecord.client_secret_hash);
+  if (!isConfidential && !code_challenge) {
+    return res.status(400).send("Missing required parameter: code_challenge");
   }
 
   // Store OAuth params in session
@@ -101,8 +114,11 @@ router.get("/oauth/authorize", (req, res) => {
 
 // ── Token Endpoint ────────────────────────────────────────────────────────────
 
-router.post("/oauth/token", async (req, res) => {
-  const { grant_type } = req.body || {};
+router.post(["/oauth/token", "/token"], async (req, res) => {
+  const body = req.body || {};
+  const { grant_type, client_id } = body;
+  const bodyKeys = Object.keys(body);
+  console.log(`[oauth] token request grant_type=${grant_type} client_id=${client_id ? client_id.slice(0, 8) + "…" : "none"} fields=${bodyKeys.join(",")}`);
 
   if (grant_type === "authorization_code") {
     return handleAuthCodeGrant(req, res);
@@ -110,14 +126,18 @@ router.post("/oauth/token", async (req, res) => {
   if (grant_type === "refresh_token") {
     return handleRefreshGrant(req, res);
   }
+  if (grant_type === "client_credentials") {
+    return handleClientCredentialsGrant(req, res);
+  }
+  console.log(`[oauth] ANOMALOUS token request: unknown grant_type=${grant_type} ip=${req.ip} fields=${bodyKeys.join(",")}`);
   return res.status(400).json({ error: "unsupported_grant_type" });
 });
 
 async function handleAuthCodeGrant(req, res) {
-  const { code, redirect_uri, code_verifier, client_id } = req.body;
+  const { code, redirect_uri, code_verifier, client_id, client_secret } = req.body;
 
-  if (!code || !code_verifier) {
-    return res.status(400).json({ error: "invalid_request", error_description: "Missing code or code_verifier" });
+  if (!code) {
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing code" });
   }
 
   const codeRow = consumeOAuthCode(code);
@@ -125,17 +145,28 @@ async function handleAuthCodeGrant(req, res) {
     return res.status(400).json({ error: "invalid_grant", error_description: "Code invalid or expired" });
   }
 
-  // Verify PKCE
-  const expected = codeRow.code_challenge;
-  const method = codeRow.challenge_method;
-  let verifierHash;
-  if (method === "S256") {
-    verifierHash = createHash("sha256").update(code_verifier).digest("base64url");
+  if (code_verifier) {
+    // Public client: verify PKCE
+    const expected = codeRow.code_challenge;
+    const method = codeRow.challenge_method;
+    const verifierHash = method === "S256"
+      ? createHash("sha256").update(code_verifier).digest("base64url")
+      : code_verifier; // plain (discouraged)
+    if (verifierHash !== expected) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
+    }
+  } else if (client_id && client_secret) {
+    // Confidential client: verify client secret
+    const client = getOAuthClientWithSecret(client_id);
+    if (!client || !client.client_secret_hash || client_id !== codeRow.client_id) {
+      return res.status(401).json({ error: "invalid_client" });
+    }
+    const valid = await bcrypt.compare(client_secret, client.client_secret_hash);
+    if (!valid) {
+      return res.status(401).json({ error: "invalid_client" });
+    }
   } else {
-    verifierHash = code_verifier; // plain (discouraged)
-  }
-  if (verifierHash !== expected) {
-    return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing code_verifier or client credentials" });
   }
 
   const accessToken = randomBytes(32).toString("hex");
@@ -185,6 +216,45 @@ async function handleRefreshGrant(req, res) {
     expires_in: 3600,
     refresh_token: newRefreshToken,
     scope: tokenRow.scope || "mcp",
+  });
+}
+
+async function handleClientCredentialsGrant(req, res) {
+  const { client_id, client_secret } = req.body;
+
+  if (!client_id || !client_secret) {
+    console.log(`[oauth] client_credentials missing fields: client_id=${!!client_id} client_secret=${!!client_secret}`);
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing client_id or client_secret" });
+  }
+
+  const client = getOAuthClientWithSecret(client_id);
+  if (!client || !client.client_secret_hash) {
+    console.log(`[oauth] client_credentials client not found or not confidential: client_id=${client_id.slice(0, 8)}…`);
+    return res.status(401).json({ error: "invalid_client" });
+  }
+
+  const valid = await bcrypt.compare(client_secret, client.client_secret_hash);
+  if (!valid) {
+    console.log(`[oauth] client_credentials secret mismatch: client_id=${client_id.slice(0, 8)}…`);
+    return res.status(401).json({ error: "invalid_client" });
+  }
+
+  const accessToken = randomBytes(32).toString("hex");
+  const refreshToken = randomBytes(32).toString("hex");
+  saveOAuthTokens({
+    accessToken,
+    refreshToken,
+    userId: client.user_id,
+    clientId: client_id,
+    scope: "mcp",
+  });
+
+  console.log(`[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
+  res.json({
+    access_token: accessToken,
+    token_type: "Bearer",
+    expires_in: 3600,
+    scope: "mcp",
   });
 }
 
@@ -316,12 +386,19 @@ function issueCodeAndRedirect(req, res, userId, oauth) {
 export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
-    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}"`);
+    console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} auth=${auth ? auth.slice(0, 20) + "…" : "none"} ip=${req.ip}`);
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", resource_metadata="${baseUrl(req)}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ error: "unauthorized" });
   }
   const token = auth.slice(7);
   const record = getTokenRecord(token);
-  if (!record || record.expires_at < Math.floor(Date.now() / 1000)) {
+  if (!record) {
+    console.log(`[oauth] ANOMALOUS unknown bearer token ip=${req.ip}`);
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
+    return res.status(401).json({ error: "invalid_token" });
+  }
+  if (record.expires_at < Math.floor(Date.now() / 1000)) {
+    console.log(`[oauth] ANOMALOUS expired bearer token user_id=${record.user_id} ip=${req.ip}`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }

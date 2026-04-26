@@ -9,6 +9,7 @@ import { readFileSync } from "fs";
 import { randomBytes } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
@@ -70,7 +71,10 @@ app.use(session({
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
-    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}`);
+    const body = req.method === "POST" && (req.path === "/sse" || req.path === "/mcp") && req.body
+      ? " body:" + JSON.stringify(req.body).slice(0, 200)
+      : "";
+    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}${body}`);
   });
   next();
 });
@@ -127,6 +131,7 @@ app.get("/health", (req, res) => {
 // ── OAuth + onboarding routes ─────────────────────────────────────────────────
 
 app.use(oauthRouter);
+app.use("/mcp", oauthRouter);
 app.use(onboardingRouter);
 
 // ── MCP Streamable HTTP endpoint ──────────────────────────────────────────────
@@ -137,23 +142,31 @@ app.use(onboardingRouter);
 
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
-// MCP endpoint is at the root path — Claude connects to the configured URL directly.
+function createMcpServer(userId) {
+  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "2.0.0" });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId));
+  return mcpServer;
+}
+
+// MCP endpoint — available at both / and /mcp.
 // All specific routes above (/health, /login, /oauth/*, etc.) take precedence.
-app.all("/", requireBearerToken, async (req, res) => {
+async function handleMcp(req, res) {
   try {
     const sessionId = req.headers["mcp-session-id"];
-    let mcpSession = sessionId ? mcpSessions.get(sessionId) : null;
+    // Initialize requests always create a new session — never route to an existing one.
+    // This handles clients (e.g. HA) that send a second initialize on a stale session ID.
+    const mcpSession = !isInitializeRequest(req.body) && sessionId
+      ? mcpSessions.get(sessionId)
+      : null;
 
     if (!mcpSession) {
-      // Check if this is an initialize request; if not and no session exists, reject
-      if (sessionId || !isInitializeRequest(req.body)) {
+      if (!isInitializeRequest(req.body)) {
         return res.status(404).json({ error: "Session not found. Send an initialize request first." });
       }
 
       // Create a new MCP session for this user
       const userId = req.userId;
-      const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "2.0.0" });
-      registerAllTools(mcpServer, () => getOrCreateSession(userId));
+      const mcpServer = createMcpServer(userId);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomBytes(16).toString("hex"),
@@ -179,7 +192,45 @@ app.all("/", requireBearerToken, async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   }
-});
+}
+
+app.all("/", requireBearerToken, handleMcp);
+app.all("/mcp", requireBearerToken, handleMcp);
+
+// ── MCP SSE transport endpoints (for Home Assistant and other SSE-only clients) ─
+
+function makeSseConnectHandler(postEndpoint) {
+  return async function (req, res) {
+    try {
+      const transport = new SSEServerTransport(postEndpoint, res);
+      const sessionId = transport.sessionId;
+      const mcpServer = createMcpServer(req.userId);
+      mcpSessions.set(sessionId, { server: mcpServer, transport });
+      transport.onclose = () => { mcpSessions.delete(sessionId); };
+      await mcpServer.connect(transport); // connect() calls transport.start() internally
+    } catch (err) {
+      console.error("SSE connect error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+    }
+  };
+}
+
+async function handleSseMessage(req, res) {
+  try {
+    const mcpSession = req.query.sessionId ? mcpSessions.get(req.query.sessionId) : null;
+    if (!mcpSession || !(mcpSession.transport instanceof SSEServerTransport)) {
+      return res.status(404).json({ error: "SSE session not found." });
+    }
+    await mcpSession.transport.handlePostMessage(req, res, req.body);
+  } catch (err) {
+    console.error("SSE message error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+app.get("/sse",       requireBearerToken, makeSseConnectHandler("/messages"));
+app.post("/sse",      requireBearerToken, handleMcp); // HA uses Streamable HTTP at this URL
+app.post("/messages", requireBearerToken, handleSseMessage);
 
 // ── Cleanup job ───────────────────────────────────────────────────────────────
 

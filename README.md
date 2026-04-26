@@ -83,6 +83,29 @@ docker compose --profile cloudflare-temp up --build
 
 ---
 
+## Generating OAuth Client Credentials (for Home Assistant / headless clients)
+
+Some MCP clients — like Home Assistant — require a pre-registered `client_id` and `client_secret` rather than dynamic client registration. You create a confidential client once, then enter the credentials in your integration. Home Assistant will still send you through a one-time browser login (authorization code flow) to link your account.
+
+**Prerequisites:** the HTTP server must already be running and you must have an account on it.
+
+```bash
+# Run inside the Docker container (the server must be up)
+docker compose exec anylist-mcp node scripts/create-client.js you@example.com "Home Assistant"
+```
+
+This prints a `client_id` and `client_secret`. **Save the secret immediately** — it is hashed in the database and cannot be retrieved later.
+
+The server URL (what you enter in HA) is:
+
+```
+https://<your-tunnel-domain>
+```
+
+See **[docs/home-assistant.md](docs/home-assistant.md)** for step-by-step Home Assistant setup.
+
+---
+
 ## Development
 
 ```bash
