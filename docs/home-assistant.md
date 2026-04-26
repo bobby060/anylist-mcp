@@ -39,16 +39,6 @@ Copy both values somewhere safe before closing the terminal.
 
 Add the anylist-mcp server via the **Settings → Devices & Services → Add Integration → MCP Server** UI (the exact path depends on your HA version).
 
-For versions that support MCP client configuration via YAML:
-
-```yaml
-url: "https://<your-tunnel-domain>"
-client_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-client_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
-
-Replace `<your-tunnel-domain>` with your Cloudflare Tunnel domain (e.g. `anylist.example.com`).
-
 ---
 
 ## Step 3: Verify
@@ -57,12 +47,8 @@ Restart Home Assistant, then open **Developer Tools → Template** and try calli
 
 ---
 
-## Troubleshooting
+## Step 4: Add to Voice Agent
+Go to **Settings -> Voice Assistants** and select the assistant you want to modify. Click the gear next to the assistant's **Conversation Agent** and check `anylist-mcp-server` under **Control Home Assistant**. I also updated the system instructions to route shopping list requests here. You might need to disable Shopping List entity access for the built-in Home Assistant shopping list or the conversation agent might get confused.
 
-| Symptom | Likely cause |
-|---|---|
-| `invalid_client` from token endpoint | Wrong `client_id` / `client_secret`, or the user account doesn't exist yet |
-| `unauthorized` on MCP requests | Token expired or the access token isn't being sent as a Bearer header |
-| Server not reachable | Tunnel is down — check `docker compose logs cloudflared` |
+---
 
-Token lifetime is 1 hour. Home Assistant will automatically refresh using the stored refresh token — no need to re-authorize.
