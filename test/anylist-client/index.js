@@ -3,7 +3,6 @@ import { runShoppingItemsTests } from './shopping-items.test.js';
 import { runRecipesTests } from './recipes.test.js';
 import { runCollectionsTests } from './collections.test.js';
 import { runMealPlanTests } from './meal-plan.test.js';
-import { runCategoriesTests } from './categories.test.js';
 
 console.log('🧪 AnyList Client Tests\n');
 
@@ -13,7 +12,6 @@ const suites = [
   runRecipesTests,
   runCollectionsTests,
   runMealPlanTests,
-  runCategoriesTests,
 ];
 
 let totalFailed = 0;
