@@ -67,8 +67,8 @@ export class MockAnyListClient {
 
   getLists() { return this._lists; }
 
-  async addItem(name, qty, notes) {
-    this._items.push({ name, quantity: qty, notes });
+  async addItem(name, qty, notes, category) {
+    this._items.push({ name, quantity: qty, notes, category });
   }
 
   async removeItem(name) {

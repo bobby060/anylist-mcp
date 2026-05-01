@@ -104,7 +104,7 @@ class AnyListClient {
   }
 
   // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null) {
+  async addItem(itemName, quantity = 1, notes = null, category = "other") {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -135,6 +135,7 @@ class AnyListClient {
           if (notes !== null) {
             existingItem.details = notes;
           }
+          // Category not used if item already has a category
 
           existingItem.save();
         }
@@ -143,6 +144,9 @@ class AnyListClient {
         const itemOptions = { name: itemName };
         if (notes !== null) {
           itemOptions.details = notes;
+        }
+        if (category !== "other") {
+          itemOptions.category = category;
         }
 
         const newItem = this.client.createItem(itemOptions);
