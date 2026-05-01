@@ -146,7 +146,7 @@ class AnyListClient {
           itemOptions.details = notes;
         }
         if (category !== "other") {
-          itemOptions.category = category;
+          itemOptions.categoryMatchId = category;
         }
 
         const newItem = this.client.createItem(itemOptions);
@@ -239,9 +239,6 @@ class AnyListClient {
     }
 
     try {
-      // Build category ID to name map from the response data
-      const categoryMap = this._buildCategoryMap();
-
       // Get all items from the list
       const items = this.targetList.items || [];
 
@@ -256,7 +253,7 @@ class AnyListClient {
           name: item.name,
           quantity: typeof item.quantity === 'number' ? item.quantity : 1,
           checked: item.checked || false,
-          category: categoryMap[item.categoryMatchId] || 'other'
+          category: item.categoryMatchId || 'other'
         };
         if (includeNotes && item.details) {
           result.note = item.details;

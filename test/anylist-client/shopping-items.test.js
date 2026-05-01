@@ -7,6 +7,7 @@ import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.
 const ITEM = '🧪 Test Item';
 const ITEM_QTY = '🧪 Test Item Qty';
 const ITEM_NOTES = '🧪 Test Item Notes';
+const ITEM_CATEGORY = '🧪 Test Item Category';
 
 export async function runShoppingItemsTests() {
   console.log('\n🛒 Shopping Items');
@@ -15,7 +16,7 @@ export async function runShoppingItemsTests() {
   const client = await createConnectedClient();
 
   // Pre-clean
-  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES]) {
+  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY]) {
     try { await client.deleteItem(name); } catch {}
   }
 
@@ -61,6 +62,14 @@ export async function runShoppingItemsTests() {
     const item = client.targetList.getItemByName(ITEM_NOTES);
     if (!item) throw new Error('Item not found');
     if (item.details !== note) throw new Error(`Expected notes "${note}", got "${item.details}"`);
+  });
+
+  await test('addItem with category stores correct category', async () => {
+    await client.addItem(ITEM_CATEGORY, 1, null, 'produce');
+    const items = await client.getItems();
+    const item = items.find(i => i.name === ITEM_CATEGORY);
+    if (!item) throw new Error('Item not found after adding');
+    if (item.category !== 'produce') throw new Error(`Expected category "produce", got "${item.category}"`);
   });
 
   await test('addItem updates notes on existing item', async () => {
@@ -186,7 +195,7 @@ export async function runShoppingItemsTests() {
   });
 
   // Cleanup
-  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES]) {
+  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY]) {
     try { await client.deleteItem(name); } catch {}
   }
 

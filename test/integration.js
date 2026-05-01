@@ -86,6 +86,38 @@ try {
     return text;
   });
 
+  // Shopping: add_item with category, confirm via list_items, then delete
+  const categoryTestItem = `🧪 Category Test ${Date.now()}`;
+  await test(`shopping → add_item with category ("${categoryTestItem}", produce)`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: {
+      action: 'add_item', name: categoryTestItem, list_name: 'Groceries', category: 'produce',
+    }});
+    const text = r.content[0].text;
+    if (!text.includes('Successfully')) throw new Error(text);
+    return text;
+  });
+
+  await test(`shopping → list_items shows "${categoryTestItem}" under produce`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Groceries' } });
+    const text = r.content[0].text;
+    if (!text.includes(categoryTestItem)) throw new Error(`Item "${categoryTestItem}" not found in list`);
+    const lower = text.toLowerCase();
+    const produceIdx = lower.indexOf('produce');
+    const itemIdx = lower.indexOf(categoryTestItem.toLowerCase());
+    if (produceIdx === -1) throw new Error('"produce" category heading not found in list');
+    if (itemIdx < produceIdx) throw new Error(`Item appears before the produce category heading`);
+    return `"${categoryTestItem}" found under produce`;
+  });
+
+  await test(`shopping → delete_item ("${categoryTestItem}")`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: {
+      action: 'delete_item', name: categoryTestItem, list_name: 'Groceries',
+    }});
+    const text = r.content[0].text;
+    if (!text.toLowerCase().includes('delet')) throw new Error(text);
+    return text;
+  });
+
   // Shopping: get_favorites
   await test('shopping → get_favorites', async () => {
     const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: 'Groceries' } });
