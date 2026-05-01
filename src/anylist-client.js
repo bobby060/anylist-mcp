@@ -104,7 +104,7 @@ class AnyListClient {
   }
 
   // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null) {
+  async addItem(itemName, quantity = 1, notes = null, category = "other") {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -135,6 +135,7 @@ class AnyListClient {
           if (notes !== null) {
             existingItem.details = notes;
           }
+          // Category not used if item already has a category
 
           existingItem.save();
         }
@@ -143,6 +144,9 @@ class AnyListClient {
         const itemOptions = { name: itemName };
         if (notes !== null) {
           itemOptions.details = notes;
+        }
+        if (category !== "other") {
+          itemOptions.categoryMatchId = category;
         }
 
         const newItem = this.client.createItem(itemOptions);
@@ -235,9 +239,6 @@ class AnyListClient {
     }
 
     try {
-      // Build category ID to name map from the response data
-      const categoryMap = this._buildCategoryMap();
-
       // Get all items from the list
       const items = this.targetList.items || [];
 
@@ -252,7 +253,7 @@ class AnyListClient {
           name: item.name,
           quantity: typeof item.quantity === 'number' ? item.quantity : 1,
           checked: item.checked || false,
-          category: categoryMap[item.categoryMatchId] || 'other'
+          category: item.categoryMatchId || 'other'
         };
         if (includeNotes && item.details) {
           result.note = item.details;

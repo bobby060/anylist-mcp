@@ -27,6 +27,26 @@ describe('shopping tool', () => {
       assert.equal(client._items[0].quantity, 2);
       assert.equal(client._items[0].notes, 'organic');
     });
+
+
+    it ('should default to "other" category if not provided', async () => {
+      await handlers.shopping({ action: 'add_item', name: 'Bread' });
+      assert.equal(client._items[0].category, 'other');
+    });
+
+    it('should set category when provided', async () => {
+      await handlers.shopping({ action: 'add_item', name: 'Bananas', category: 'produce' });
+      assert.equal(client._items[0].category, 'produce');
+    });
+
+    it('should return error for invalid category', async () => {
+      try {
+        await handlers.shopping({ action: 'add_item', name: 'Soda', category: 'invalid-category' });
+        assert.fail('Expected error for invalid category');
+      } catch (e) {
+        assert.ok(e.message.includes('Invalid input for field "category"'));
+      }
+    });
   });
 
   describe('check_item', () => {
