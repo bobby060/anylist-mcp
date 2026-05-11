@@ -249,7 +249,7 @@ class AnyListClient {
     }
 
     console.error(`Added "${itemName}" to category "${category.name}" (matchId="${matchId}")`);
-    return { name: itemName, categoryName: category.name, matchId };
+    return newItem;
   }
 
   async deleteItem(itemName) {
@@ -422,50 +422,80 @@ class AnyListClient {
     if (!found) {
       throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}".`);
     }
-    const { group, category } = found;
+    const { category } = found;
 
-    // Compute a sensible categoryMatchId by copying from a sibling, falling back
-    // to systemCategory or a slug of the name.
-    let matchId;
-    const sibling = this.targetList.items.find(i =>
-      (i.categoryAssignments || []).some(a => a.categoryId === category.identifier)
-      && i._identifier !== item._identifier
-      && i._categoryMatchId
-      && i._categoryMatchId !== 'other'
-    );
-    if (sibling) matchId = sibling._categoryMatchId;
-    else if (category.systemCategory) matchId = category.systemCategory;
-    else matchId = String(category.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    // Implementation: delete-and-recreate.
+    // AnyList's reverse-engineered API has no confirmed handler for moving an
+    // existing item between categories (both update-list-item and the per-field
+    // matchId handler are silently dropped). The delete-and-recreate approach
+    // is reliable but lossy — it creates a new item identifier and drops fields
+    // we don't explicitly carry over.
 
-    // Best-effort write. The AnyList API has no confirmed handler for moving an
-    // existing item between categories — both `update-list-item` and the
-    // per-field `set-list-item-category-match-id` get silently dropped or create
-    // a "shadow" sub-group. We try the update-list-item path then verify;
-    // if it didn't stick, surface an honest error pointing the user at the app.
-    await item.assignToCustomCategory({
-      categoryGroupId: group.identifier,
-      categoryId: category.identifier,
-      matchId,
-    });
+    // Capture preservable state from the Item instance.
+    const preserved = {
+      quantity: typeof item._quantity === 'number' ? item._quantity : 1,
+      details: item._details || null,
+      checked: !!item._checked,
+    };
 
-    // Verify by refetching from the server.
-    await this.client.getLists();
-    const refreshed = this.client.getListByName(this.targetList.name);
-    const verifyItem = refreshed && refreshed.items.find(i => i._identifier === item._identifier);
-    const stuck = !!(verifyItem && (verifyItem._categoryAssignments || []).some(
-      a => a.categoryId === category.identifier
-    ));
-
-    if (!stuck) {
-      throw new Error(
-        `AnyList accepted the request but did not persist the category assignment for "${itemName}". ` +
-        `This operation is not reliably supported by the reverse-engineered AnyList API yet ` +
-        `(neither update-list-item nor the per-field matchId handler accepts the assignment). ` +
-        `Move "${itemName}" to "${category.name}" in the AnyList app directly.`
-      );
+    // Look at the raw protobuf for fields the Item wrapper doesn't capture, so we
+    // can warn the caller that they'll be lost.
+    let lostFields = [];
+    try {
+      const slr = this.client._userData && this.client._userData.shoppingListsResponse;
+      const slist = slr && (slr.newLists || []).find(l => l.identifier === this.targetList.identifier);
+      const raw = slist && (slist.items || []).find(i => i.identifier === item._identifier);
+      if (raw) {
+        if (raw.photoIds && raw.photoIds.length) lostFields.push(`${raw.photoIds.length} photo(s)`);
+        if (raw.prices && raw.prices.length) lostFields.push(`${raw.prices.length} price record(s)`);
+        if (raw.storeIds && raw.storeIds.length) lostFields.push(`${raw.storeIds.length} store assignment(s)`);
+        if (raw.recipeId) lostFields.push('recipe link');
+        if (raw.eventId) lostFields.push('meal-plan link');
+        if (raw.productUpc) lostFields.push('barcode');
+        if (typeof raw.manualSortIndex === 'number' && raw.manualSortIndex !== 0) {
+          lostFields.push('manual sort position');
+        }
+      }
+    } catch (e) {
+      // Best-effort warning lookup — never block the operation on this.
+      console.error(`(could not inspect raw item for warning: ${e.message})`);
     }
 
-    console.error(`Assigned item "${itemName}" to category "${category.name}" (matchId="${matchId}")`);
+    // Delete the item. Use the wrapper's deleteItem which calls
+    // targetList.removeItem (the permanent-delete handler, despite the name).
+    await this.deleteItem(itemName);
+
+    // Re-add into the target category. addItemToCategory handles the
+    // matchId computation (sibling-derived → systemCategory → slug fallback).
+    const newItem = await this.addItemToCategory(itemName, categoryName, {
+      quantity: preserved.quantity,
+      notes: preserved.details,
+    });
+
+    // Re-apply checked status if needed (addItem creates unchecked).
+    if (preserved.checked && newItem) {
+      newItem.checked = true;
+      await newItem.save();
+    }
+
+    if (lostFields.length > 0) {
+      console.error(
+        `WARN: moving "${itemName}" to "${category.name}" via delete-and-recreate dropped: ` +
+        lostFields.join(', ')
+      );
+    }
+    console.error(`Moved "${itemName}" to category "${category.name}" (delete-and-recreate)`);
+
+    return {
+      itemName,
+      categoryName: category.name,
+      droppedFields: lostFields,
+      // Quantity is omitted intentionally: the lib's patched _encode skips it
+      // because the modern protobuf uses quantityPb (a structured object) which
+      // neither this lib nor the existing add path supports. Same for any item
+      // added via shopping.add_item — not a regression introduced here.
+      preservedFields: ['name', 'details', 'checked'],
+    };
   }
 
   _buildCategoryMap() {
