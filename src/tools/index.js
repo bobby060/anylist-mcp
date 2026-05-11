@@ -3,6 +3,7 @@ import { register as registerShopping } from "./shopping.js";
 import { register as registerRecipes } from "./recipes.js";
 import { register as registerMealPlan } from "./meal-plan.js";
 import { register as registerRecipeCollections } from "./recipe-collections.js";
+import { register as registerCategories } from "./categories.js";
 
 /**
  * Register all AnyList MCP tools on the given server.
@@ -19,4 +20,5 @@ export function registerAllTools(server, getClient) {
   registerRecipes(server, getClient);
   registerMealPlan(server, getClient);
   registerRecipeCollections(server, getClient);
+  registerCategories(server, getClient);
 }
