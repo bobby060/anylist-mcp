@@ -267,6 +267,87 @@ class AnyListClient {
     }
   }
 
+  // ===== CATEGORIES =====
+
+  async getCategoryGroups() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    return this.targetList.categoryGroups.map(g => ({
+      identifier: g.identifier,
+      name: g.name,
+      defaultCategoryId: g.defaultCategoryId,
+      categories: g.categories.map(c => ({
+        identifier: c.identifier,
+        name: c.name,
+        icon: c.icon || null,
+        sortIndex: c.sortIndex,
+        isSystem: !!c.systemCategory,
+      })),
+    }));
+  }
+
+  async createCategory(name, { groupName = null } = {}) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    let categoryGroupId;
+    if (groupName) {
+      const group = this.targetList.categoryGroups.find(
+        g => (g.name || '').toLowerCase() === groupName.toLowerCase()
+      );
+      if (!group) {
+        throw new Error(`Category group "${groupName}" not found in list "${this.targetList.name}".`);
+      }
+      categoryGroupId = group.identifier;
+    }
+    const created = await this.targetList.createCategory({ name, categoryGroupId });
+    console.error(`Created category: ${created.name}`);
+    return created;
+  }
+
+  async renameCategory(currentName, newName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const found = this.targetList.findCategoryByName(currentName);
+    if (!found) {
+      throw new Error(`Category "${currentName}" not found in list "${this.targetList.name}".`);
+    }
+    const updated = await this.targetList.renameCategory(found.category.identifier, newName);
+    console.error(`Renamed category "${currentName}" → "${newName}"`);
+    return updated;
+  }
+
+  async deleteCategory(name) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const found = this.targetList.findCategoryByName(name);
+    if (!found) {
+      throw new Error(`Category "${name}" not found in list "${this.targetList.name}".`);
+    }
+    await this.targetList.removeCategory(found.category.identifier);
+    console.error(`Deleted category: ${name}`);
+  }
+
+  async setItemCategory(itemName, categoryName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const item = this.targetList.getItemByName(itemName);
+    if (!item) {
+      throw new Error(`Item "${itemName}" not found in list "${this.targetList.name}".`);
+    }
+    const found = this.targetList.findCategoryByName(categoryName);
+    if (!found) {
+      throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}".`);
+    }
+    item.categoryMatchId = found.category.identifier;
+    await item.save();
+    console.error(`Assigned item "${itemName}" to category "${categoryName}"`);
+  }
+
   _buildCategoryMap() {
     const categoryMap = {};
     try {
