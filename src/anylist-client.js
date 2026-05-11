@@ -3,6 +3,53 @@ import Item from '../anylist-js/lib/item.js';
 import { randomUUID } from 'crypto';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
+// macOS Keychain (and Linux/Windows equivalents) lookup for AnyList credentials.
+// Storing the password in plaintext (e.g. ~/.claude.json or a .env file) is the
+// previous default and still supported via env-var fallback, but the Keychain
+// path is preferred and works for both the Claude Code MCP registration and the
+// Claude Desktop .mcpb extension (since the MCP server itself does the lookup).
+//
+// Service / account naming convention:
+//   service = "anylist-mcp"
+//   account = "username" | "password" | "default-list"
+//
+// To populate: `npm run set-credentials` from the project root.
+const KEYRING_SERVICE = 'anylist-mcp';
+const KEYRING_ACCOUNTS = {
+  username: 'username',
+  password: 'password',
+  defaultListName: 'default-list',
+};
+
+let _keyringModule = null;
+
+/**
+ * Lazy-load @napi-rs/keyring and return a getter for a single credential field.
+ * Returns null silently on any error (missing module, no entry, locked Keychain)
+ * so that callers can fall back to env vars without crashing.
+ *
+ * @param {keyof typeof KEYRING_ACCOUNTS} field
+ * @returns {Promise<string|null>}
+ */
+async function readFromKeyring(field) {
+  try {
+    if (!_keyringModule) {
+      _keyringModule = await import('@napi-rs/keyring');
+    }
+    const account = KEYRING_ACCOUNTS[field];
+    if (!account) return null;
+    const entry = new _keyringModule.Entry(KEYRING_SERVICE, account);
+    return entry.getPassword();
+  } catch (err) {
+    // Keyring is best-effort. Log to stderr and let env-var fallback take over.
+    // Common cases: module not installed, no entry yet, Keychain locked.
+    if (err && err.message) {
+      console.error(`[anylist-mcp] Keychain read failed for "${field}": ${err.message}`);
+    }
+    return null;
+  }
+}
+
 // Compact UUID without dashes, matching the format used by anylist-js's uuid module.
 const compactUuid = () => randomUUID().replace(/-/g, '');
 
@@ -38,12 +85,28 @@ class AnyListClient {
   }
 
   async connect(listName = null) {
-    const username = this._username || process.env.ANYLIST_USERNAME;
-    const password = this._password || process.env.ANYLIST_PASSWORD;
-    const targetListName = listName || this.defaultListName || process.env.ANYLIST_LIST_NAME;
+    // Resolution order for each credential:
+    //   1. Constructor-provided value (HTTP mode, tests).
+    //   2. macOS Keychain via @napi-rs/keyring (preferred for stdio MCP).
+    //   3. Environment variable (legacy / dev fallback).
+    const username =
+      this._username ||
+      (await readFromKeyring('username')) ||
+      process.env.ANYLIST_USERNAME;
+    const password =
+      this._password ||
+      (await readFromKeyring('password')) ||
+      process.env.ANYLIST_PASSWORD;
+    const targetListName =
+      listName ||
+      this.defaultListName ||
+      (await readFromKeyring('defaultListName')) ||
+      process.env.ANYLIST_LIST_NAME;
 
     if (!username || !password) {
-      const error = new Error('Missing AnyList credentials. Provide username and password.');
+      const error = new Error(
+        'Missing AnyList credentials. Run `npm run set-credentials` to store them in the macOS Keychain, or set ANYLIST_USERNAME / ANYLIST_PASSWORD in the environment.'
+      );
       console.error(error.message);
       throw error;
     }

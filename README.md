@@ -44,16 +44,29 @@ Add to your MCP config (`~/.claude/claude_desktop_config.json` or equivalent):
   "mcpServers": {
     "anylist": {
       "command": "node",
-      "args": ["/absolute/path/to/anylist-mcp/src/server.js"],
-      "env": {
-        "ANYLIST_USERNAME": "you@example.com",
-        "ANYLIST_PASSWORD": "yourpassword",
-        "ANYLIST_LIST_NAME": "Groceries"
-      }
+      "args": ["/absolute/path/to/anylist-mcp/src/server.js"]
     }
   }
 }
 ```
+
+Then store your AnyList credentials in the OS Keychain (recommended) so they
+don't sit in plaintext in `~/.claude.json`:
+
+```bash
+npm run set-credentials                   # prompts for email, password, default list
+npm run set-credentials -- --show         # confirm what's stored
+npm run set-credentials -- --delete       # wipe all stored credentials
+```
+
+The server reads credentials in this order: constructor args (HTTP mode) →
+OS Keychain via `@napi-rs/keyring` → `ANYLIST_USERNAME` / `ANYLIST_PASSWORD` /
+`ANYLIST_LIST_NAME` environment variables. The env-var path is still supported
+for `.env` development workflows and CI, but the Keychain is preferred for any
+local Claude Code / Claude Desktop install.
+
+On macOS the entries appear in Keychain Access under the service name
+`anylist-mcp` with accounts `username`, `password`, and `default-list`.
 
 ---
 

@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "set-credentials": "node scripts/set-credentials.js",
     "test:client": "node test/anylist-client/index.js",
     "test:integration": "node test/integration.js",
     "pack": "mcpb pack",
@@ -25,6 +26,7 @@
   "dependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@napi-rs/keyring": "^1.3.0",
     "anylist": "^0.8.5",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.8.0",
