@@ -396,9 +396,50 @@ class AnyListClient {
     if (!found) {
       throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}".`);
     }
-    item.categoryMatchId = found.category.identifier;
-    await item.save();
-    console.error(`Assigned item "${itemName}" to category "${categoryName}"`);
+    const { group, category } = found;
+
+    // Compute a sensible categoryMatchId by copying from a sibling, falling back
+    // to systemCategory or a slug of the name.
+    let matchId;
+    const sibling = this.targetList.items.find(i =>
+      (i.categoryAssignments || []).some(a => a.categoryId === category.identifier)
+      && i._identifier !== item._identifier
+      && i._categoryMatchId
+      && i._categoryMatchId !== 'other'
+    );
+    if (sibling) matchId = sibling._categoryMatchId;
+    else if (category.systemCategory) matchId = category.systemCategory;
+    else matchId = String(category.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    // Best-effort write. The AnyList API has no confirmed handler for moving an
+    // existing item between categories — both `update-list-item` and the
+    // per-field `set-list-item-category-match-id` get silently dropped or create
+    // a "shadow" sub-group. We try the update-list-item path then verify;
+    // if it didn't stick, surface an honest error pointing the user at the app.
+    await item.assignToCustomCategory({
+      categoryGroupId: group.identifier,
+      categoryId: category.identifier,
+      matchId,
+    });
+
+    // Verify by refetching from the server.
+    await this.client.getLists();
+    const refreshed = this.client.getListByName(this.targetList.name);
+    const verifyItem = refreshed && refreshed.items.find(i => i._identifier === item._identifier);
+    const stuck = !!(verifyItem && (verifyItem._categoryAssignments || []).some(
+      a => a.categoryId === category.identifier
+    ));
+
+    if (!stuck) {
+      throw new Error(
+        `AnyList accepted the request but did not persist the category assignment for "${itemName}". ` +
+        `This operation is not reliably supported by the reverse-engineered AnyList API yet ` +
+        `(neither update-list-item nor the per-field matchId handler accepts the assignment). ` +
+        `Move "${itemName}" to "${category.name}" in the AnyList app directly.`
+      );
+    }
+
+    console.error(`Assigned item "${itemName}" to category "${category.name}" (matchId="${matchId}")`);
   }
 
   _buildCategoryMap() {
