@@ -1,5 +1,9 @@
 import AnyList from '../anylist-js/lib/index.js';
+import { randomUUID } from 'crypto';
 import { normalizeRecipe } from './recipe-normalizer.js';
+
+// Compact UUID without dashes, matching the format used by anylist-js's uuid module.
+const compactUuid = () => randomUUID().replace(/-/g, '');
 
 class AnyListClient {
   /**
@@ -190,6 +194,82 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
+  }
+
+  /**
+   * Add a new item directly into a custom category (or a system category referenced by name).
+   * Resolves the category by name (whitespace-tolerant), computes the right matchId slug
+   * by copying from a sibling item or falling back to systemCategory or a slug of the name,
+   * then creates the item with both `categoryMatchId` and `categoryAssignments` populated
+   * so it lands in the existing category bucket rather than a shadow.
+   *
+   * Unlike setItemCategory (which moves an existing item and is unreliable), this is a
+   * proven path: AnyList's `add-shopping-list-item` handler accepts both fields at create
+   * time. Verified against a real account.
+   *
+   * @param {string} itemName
+   * @param {string} categoryName  Name of an existing category in the current list.
+   * @param {object} [opts]
+   * @param {number} [opts.quantity=1]
+   * @param {string|null} [opts.notes=null]
+   * @param {string|null} [opts.store=null]  Store name to assign after adding.
+   */
+  async addItemToCategory(itemName, categoryName, { quantity = 1, notes = null, store = null } = {}) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+
+    const found = this.targetList.findCategoryByName(categoryName);
+    if (!found) {
+      throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}". Use list_categories to see valid names.`);
+    }
+    const { group, category } = found;
+
+    // If item already exists, fall through to the legacy addItem flow which handles
+    // existing-item upsert (uncheck if checked, update notes/qty). The new path is
+    // for fresh adds where we want to land in a custom category.
+    const existing = this.targetList.getItemByName(itemName);
+    if (existing) {
+      console.error(`Item "${itemName}" already exists; falling back to upsert without category change.`);
+      return this.addItem(itemName, quantity, notes, 'other', store);
+    }
+
+    // Compute the right matchId: copy from sibling, fall back to systemCategory, then slug-of-name.
+    let matchId;
+    const sibling = this.targetList.items.find(i =>
+      (i.categoryAssignments || []).some(a => a.categoryId === category.identifier)
+      && i._categoryMatchId
+      && i._categoryMatchId !== 'other'
+    );
+    if (sibling) matchId = sibling._categoryMatchId;
+    else if (category.systemCategory) matchId = category.systemCategory;
+    else matchId = String(category.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    const itemOptions = {
+      name: itemName,
+      categoryMatchId: matchId,
+    };
+    if (notes !== null) itemOptions.details = notes;
+    // Carry the quantity through creation so it lands in quantityPb.rawQuantity, as addItem does.
+    const rawQuantity = quantity == null ? '' : String(quantity).trim();
+    if (rawQuantity !== '' && rawQuantity !== '1') itemOptions.quantity = rawQuantity;
+
+    const newItem = this.client.createItem(itemOptions);
+    // Populate categoryAssignments before send so the server records explicit group membership.
+    newItem._categoryAssignments = [{
+      identifier: compactUuid(),
+      categoryGroupId: group.identifier,
+      categoryId: category.identifier,
+    }];
+
+    await this.targetList.addItem(newItem);
+
+    if (store) {
+      await this.setItemStore(itemName, store);
+    }
+
+    console.error(`Added "${itemName}" to category "${category.name}" (matchId="${matchId}")`);
+    return { name: itemName, categoryName: category.name, matchId };
   }
 
   async deleteItem(itemName) {
