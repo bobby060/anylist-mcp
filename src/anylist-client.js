@@ -469,7 +469,32 @@ class AnyListClient {
     if (!found) {
       throw new Error(`Category "${name}" not found in list "${this.targetList.name}".`);
     }
-    await this.targetList.removeCategory(found.category.identifier);
+    const categoryId = found.category.identifier;
+    const listId = this.targetList.identifier;
+
+    // The remove-category POST returns 200 OK and we cannot trust it. AnyList
+    // is currently silently dropping these operations (see the KNOWN BUG block
+    // on List.removeCategory in anylist-js/lib/list.js for the empirical sweep
+    // of payload shapes we tried). Send the request, then re-fetch state from
+    // the server and confirm the category is actually gone before declaring
+    // success. Throw a clear error if not, instead of reporting a false win.
+    await this.targetList.removeCategory(categoryId);
+
+    await this.client.getLists();
+    const refreshed = this.client.getListById(listId);
+    if (refreshed) {
+      this.targetList = refreshed;
+      for (const g of refreshed.categoryGroups) {
+        if ((g.categories || []).some(c => c.identifier === categoryId)) {
+          throw new Error(
+            `AnyList returned 200 OK for the delete request but the category "${name}" is still present after a server refresh. ` +
+            `This is a known server-side limitation, see anylist-js/lib/list.js comment on removeCategory. ` +
+            `Until the correct API shape is reverse-engineered, custom categories cannot be deleted programmatically; ` +
+            `they must be deleted in the AnyList iOS / web app instead.`
+          );
+        }
+      }
+    }
     console.error(`Deleted category: ${name}`);
   }
 

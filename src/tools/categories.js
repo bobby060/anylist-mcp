@@ -41,7 +41,7 @@ export function register(server, getClient) {
 - list_categories: Show all category groups and categories for a list
 - create_category: Create a new custom category in a list
 - rename_category: Rename an existing custom category
-- delete_category: Delete a custom category. Pass confirm:true to skip the confirmation prompt (required when running in clients without elicitation support, e.g. Cowork).
+- delete_category: Delete a custom category. KNOWN ISSUE: AnyList's server is currently silently dropping delete-category operations (returns 200 OK but does not apply). This action will fail with a clear error after re-fetching state and detecting the category is still present. Until the API shape is reverse-engineered, custom categories must be deleted in the AnyList iOS / web app. Pass confirm:true to skip the confirmation prompt (required when running in clients without elicitation support, e.g. Cowork).
 - set_item_category: Move an existing item into a category. Implemented as delete-and-recreate (AnyList's API has no working in-place move handler). PRESERVES name, quantity, details/notes, and checked status. DROPS the item identifier, photos, price history, store assignments, recipe links, meal-plan links, barcode, and manual sort position. For simple grocery items this is fine; for items with rich metadata, the agent should warn the user before calling.`,
     inputSchema: {
       action: z.enum([
