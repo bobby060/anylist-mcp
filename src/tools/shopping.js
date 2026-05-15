@@ -34,7 +34,7 @@ export function register(server, getClient) {
     description: `Manage AnyList shopping lists and items. Actions:
 - list_lists: Show all lists with item counts
 - list_items: Show items on a list (grouped by category)
-- add_item: Add an item to a list
+- add_item: Add an item to a list. Use category_name (free-form, matches a custom category by name) for precise placement, or category (one of 19 system slugs) for system-only placement. category_name wins when both are provided.
 - check_item: Check off (complete) an item
 - delete_item: Permanently remove an item from a list
 - get_favorites: Get favorite items for a list
@@ -47,10 +47,11 @@ export function register(server, getClient) {
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
-      category: z.enum(valid_categories).optional().describe("Category for the item (add_item only, defaults to 'other')"),
+      category: z.enum(valid_categories).optional().describe("System category slug for the item (add_item only, defaults to 'other'). Locked to AnyList's 19 built-in categories."),
+      category_name: z.string().optional().describe("Custom category name to add the item into (add_item only). Free-form; matches the user's actual category names like 'Aisle 15: Cheese, ...' or 'Bakery'. Takes precedence over `category` when both are set. Use list_categories to see valid names."),
     }
   }, async (params) => {
-    const { action, list_name, name, quantity, notes, include_checked, include_notes, category } = params;
+    const { action, list_name, name, quantity, notes, include_checked, include_notes, category, category_name } = params;
     if (category && !valid_categories.includes(category)) {
       throw new Error(`Invalid input for field "category": "${category}". Valid categories are: ${valid_categories.join(", ")}`);
     }
@@ -101,6 +102,14 @@ export function register(server, getClient) {
           let itemName = name;
           if (!itemName) itemName = await elicitRequiredField("name", "What item would you like to add?");
           await client.connect(list_name);
+          if (category_name) {
+            // Custom-category path: lands in the existing category bucket via matchId + categoryAssignments.
+            await client.addItemToCategory(itemName, category_name, {
+              quantity: quantity || 1,
+              notes: notes || null,
+            });
+            return textResponse(`Successfully added "${itemName}" to category "${category_name}" in list "${client.targetList.name}"`);
+          }
           await client.addItem(itemName, quantity || 1, notes || null, params.category || "other");
           return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"`);
         }

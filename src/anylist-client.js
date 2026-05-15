@@ -1,8 +1,60 @@
 import AnyList from '../anylist-js/lib/index.js';
 import Item from '../anylist-js/lib/item.js';
+import { randomUUID } from 'crypto';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
-// Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema
+// macOS Keychain (and Linux/Windows equivalents) lookup for AnyList credentials.
+// Storing the password in plaintext (e.g. ~/.claude.json or a .env file) is the
+// previous default and still supported via env-var fallback, but the Keychain
+// path is preferred and works for both the Claude Code MCP registration and the
+// Claude Desktop .mcpb extension (since the MCP server itself does the lookup).
+//
+// Service / account naming convention:
+//   service = "anylist-mcp"
+//   account = "username" | "password" | "default-list"
+//
+// To populate: `npm run set-credentials` from the project root.
+const KEYRING_SERVICE = 'anylist-mcp';
+const KEYRING_ACCOUNTS = {
+  username: 'username',
+  password: 'password',
+  defaultListName: 'default-list',
+};
+
+let _keyringModule = null;
+
+/**
+ * Lazy-load @napi-rs/keyring and return a getter for a single credential field.
+ * Returns null silently on any error (missing module, no entry, locked Keychain)
+ * so that callers can fall back to env vars without crashing.
+ *
+ * @param {keyof typeof KEYRING_ACCOUNTS} field
+ * @returns {Promise<string|null>}
+ */
+async function readFromKeyring(field) {
+  try {
+    if (!_keyringModule) {
+      _keyringModule = await import('@napi-rs/keyring');
+    }
+    const account = KEYRING_ACCOUNTS[field];
+    if (!account) return null;
+    const entry = new _keyringModule.Entry(KEYRING_SERVICE, account);
+    return entry.getPassword();
+  } catch (err) {
+    // Keyring is best-effort. Log to stderr and let env-var fallback take over.
+    // Common cases: module not installed, no entry yet, Keychain locked.
+    if (err && err.message) {
+      console.error(`[anylist-mcp] Keychain read failed for "${field}": ${err.message}`);
+    }
+    return null;
+  }
+}
+
+// Compact UUID without dashes, matching the format used by anylist-js's uuid module.
+const compactUuid = () => randomUUID().replace(/-/g, '');
+
+// Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema.
+// Includes categoryAssignments so update-list-item ops preserve custom-category membership.
 Item.prototype._encode = function() {
   return new this._protobuf.ListItem({
     identifier: this._identifier,
@@ -13,6 +65,7 @@ Item.prototype._encode = function() {
     category: this._category,
     userId: this._userId,
     categoryMatchId: this._categoryMatchId,
+    categoryAssignments: this._categoryAssignments,
     manualSortIndex: this._manualSortIndex,
   });
 };
@@ -32,12 +85,28 @@ class AnyListClient {
   }
 
   async connect(listName = null) {
-    const username = this._username || process.env.ANYLIST_USERNAME;
-    const password = this._password || process.env.ANYLIST_PASSWORD;
-    const targetListName = listName || this.defaultListName || process.env.ANYLIST_LIST_NAME;
+    // Resolution order for each credential:
+    //   1. Constructor-provided value (HTTP mode, tests).
+    //   2. macOS Keychain via @napi-rs/keyring (preferred for stdio MCP).
+    //   3. Environment variable (legacy / dev fallback).
+    const username =
+      this._username ||
+      (await readFromKeyring('username')) ||
+      process.env.ANYLIST_USERNAME;
+    const password =
+      this._password ||
+      (await readFromKeyring('password')) ||
+      process.env.ANYLIST_PASSWORD;
+    const targetListName =
+      listName ||
+      this.defaultListName ||
+      (await readFromKeyring('defaultListName')) ||
+      process.env.ANYLIST_LIST_NAME;
 
     if (!username || !password) {
-      const error = new Error('Missing AnyList credentials. Provide username and password.');
+      const error = new Error(
+        'Missing AnyList credentials. Run `npm run set-credentials` to store them in the macOS Keychain, or set ANYLIST_USERNAME / ANYLIST_PASSWORD in the environment.'
+      );
       console.error(error.message);
       throw error;
     }
@@ -173,6 +242,79 @@ class AnyListClient {
     }
   }
 
+  /**
+   * Add a new item directly into a custom category (or a system category referenced by name).
+   * Resolves the category by name (whitespace-tolerant), computes the right matchId slug
+   * by copying from a sibling item or falling back to systemCategory or a slug of the name,
+   * then creates the item with both `categoryMatchId` and `categoryAssignments` populated
+   * so it lands in the existing category bucket rather than a shadow.
+   *
+   * Unlike setItemCategory (which moves an existing item and is unreliable), this is a
+   * proven path: AnyList's `add-shopping-list-item` handler accepts both fields at create
+   * time. Verified against a real account.
+   *
+   * @param {string} itemName
+   * @param {string} categoryName  Name of an existing category in the current list.
+   * @param {object} [opts]
+   * @param {number} [opts.quantity=1]
+   * @param {string|null} [opts.notes=null]
+   */
+  async addItemToCategory(itemName, categoryName, { quantity = 1, notes = null } = {}) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+
+    const found = this.targetList.findCategoryByName(categoryName);
+    if (!found) {
+      throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}". Use list_categories to see valid names.`);
+    }
+    const { group, category } = found;
+
+    // If item already exists, fall through to the legacy addItem flow which handles
+    // existing-item upsert (uncheck if checked, update notes/qty). The new path is
+    // for fresh adds where we want to land in a custom category.
+    const existing = this.targetList.getItemByName(itemName);
+    if (existing) {
+      console.error(`Item "${itemName}" already exists; falling back to upsert without category change.`);
+      return this.addItem(itemName, quantity, notes, 'other');
+    }
+
+    // Compute the right matchId: copy from sibling, fall back to systemCategory, then slug-of-name.
+    let matchId;
+    const sibling = this.targetList.items.find(i =>
+      (i.categoryAssignments || []).some(a => a.categoryId === category.identifier)
+      && i._categoryMatchId
+      && i._categoryMatchId !== 'other'
+    );
+    if (sibling) matchId = sibling._categoryMatchId;
+    else if (category.systemCategory) matchId = category.systemCategory;
+    else matchId = String(category.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    const itemOptions = {
+      name: itemName,
+      categoryMatchId: matchId,
+    };
+    if (notes !== null) itemOptions.details = notes;
+
+    const newItem = this.client.createItem(itemOptions);
+    // Populate categoryAssignments before send so the server records explicit group membership.
+    newItem._categoryAssignments = [{
+      identifier: compactUuid(),
+      categoryGroupId: group.identifier,
+      categoryId: category.identifier,
+    }];
+
+    await this.targetList.addItem(newItem);
+
+    if (quantity !== 1) {
+      newItem.quantity = quantity;
+      await newItem.save();
+    }
+
+    console.error(`Added "${itemName}" to category "${category.name}" (matchId="${matchId}")`);
+    return newItem;
+  }
+
   async deleteItem(itemName) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
@@ -265,6 +407,183 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
+  }
+
+  // ===== CATEGORIES =====
+
+  async getCategoryGroups() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    return this.targetList.categoryGroups.map(g => ({
+      identifier: g.identifier,
+      name: g.name,
+      defaultCategoryId: g.defaultCategoryId,
+      categories: g.categories.map(c => ({
+        identifier: c.identifier,
+        name: c.name,
+        icon: c.icon || null,
+        sortIndex: c.sortIndex,
+        isSystem: !!c.systemCategory,
+      })),
+    }));
+  }
+
+  async createCategory(name, { groupName = null } = {}) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    let categoryGroupId;
+    if (groupName) {
+      const group = this.targetList.categoryGroups.find(
+        g => (g.name || '').toLowerCase() === groupName.toLowerCase()
+      );
+      if (!group) {
+        throw new Error(`Category group "${groupName}" not found in list "${this.targetList.name}".`);
+      }
+      categoryGroupId = group.identifier;
+    }
+    const created = await this.targetList.createCategory({ name, categoryGroupId });
+    console.error(`Created category: ${created.name}`);
+    return created;
+  }
+
+  async renameCategory(currentName, newName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const found = this.targetList.findCategoryByName(currentName);
+    if (!found) {
+      throw new Error(`Category "${currentName}" not found in list "${this.targetList.name}".`);
+    }
+    const updated = await this.targetList.renameCategory(found.category.identifier, newName);
+    console.error(`Renamed category "${currentName}" → "${newName}"`);
+    return updated;
+  }
+
+  async deleteCategory(name) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const found = this.targetList.findCategoryByName(name);
+    if (!found) {
+      throw new Error(`Category "${name}" not found in list "${this.targetList.name}".`);
+    }
+    const categoryId = found.category.identifier;
+    const listId = this.targetList.identifier;
+
+    // The remove-category POST returns 200 OK and we cannot trust it. AnyList
+    // is currently silently dropping these operations (see the KNOWN BUG block
+    // on List.removeCategory in anylist-js/lib/list.js for the empirical sweep
+    // of payload shapes we tried). Send the request, then re-fetch state from
+    // the server and confirm the category is actually gone before declaring
+    // success. Throw a clear error if not, instead of reporting a false win.
+    await this.targetList.removeCategory(categoryId);
+
+    await this.client.getLists();
+    const refreshed = this.client.getListById(listId);
+    if (refreshed) {
+      this.targetList = refreshed;
+      for (const g of refreshed.categoryGroups) {
+        if ((g.categories || []).some(c => c.identifier === categoryId)) {
+          throw new Error(
+            `AnyList returned 200 OK for the delete request but the category "${name}" is still present after a server refresh. ` +
+            `This is a known server-side limitation, see anylist-js/lib/list.js comment on removeCategory. ` +
+            `Until the correct API shape is reverse-engineered, custom categories cannot be deleted programmatically; ` +
+            `they must be deleted in the AnyList iOS / web app instead.`
+          );
+        }
+      }
+    }
+    console.error(`Deleted category: ${name}`);
+  }
+
+  async setItemCategory(itemName, categoryName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const item = this.targetList.getItemByName(itemName);
+    if (!item) {
+      throw new Error(`Item "${itemName}" not found in list "${this.targetList.name}".`);
+    }
+    const found = this.targetList.findCategoryByName(categoryName);
+    if (!found) {
+      throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}".`);
+    }
+    const { category } = found;
+
+    // Implementation: delete-and-recreate.
+    // AnyList's reverse-engineered API has no confirmed handler for moving an
+    // existing item between categories (both update-list-item and the per-field
+    // matchId handler are silently dropped). The delete-and-recreate approach
+    // is reliable but lossy — it creates a new item identifier and drops fields
+    // we don't explicitly carry over.
+
+    // Capture preservable state from the Item instance.
+    const preserved = {
+      quantity: typeof item._quantity === 'number' ? item._quantity : 1,
+      details: item._details || null,
+      checked: !!item._checked,
+    };
+
+    // Look at the raw protobuf for fields the Item wrapper doesn't capture, so we
+    // can warn the caller that they'll be lost.
+    let lostFields = [];
+    try {
+      const slr = this.client._userData && this.client._userData.shoppingListsResponse;
+      const slist = slr && (slr.newLists || []).find(l => l.identifier === this.targetList.identifier);
+      const raw = slist && (slist.items || []).find(i => i.identifier === item._identifier);
+      if (raw) {
+        if (raw.photoIds && raw.photoIds.length) lostFields.push(`${raw.photoIds.length} photo(s)`);
+        if (raw.prices && raw.prices.length) lostFields.push(`${raw.prices.length} price record(s)`);
+        if (raw.storeIds && raw.storeIds.length) lostFields.push(`${raw.storeIds.length} store assignment(s)`);
+        if (raw.recipeId) lostFields.push('recipe link');
+        if (raw.eventId) lostFields.push('meal-plan link');
+        if (raw.productUpc) lostFields.push('barcode');
+        if (typeof raw.manualSortIndex === 'number' && raw.manualSortIndex !== 0) {
+          lostFields.push('manual sort position');
+        }
+      }
+    } catch (e) {
+      // Best-effort warning lookup — never block the operation on this.
+      console.error(`(could not inspect raw item for warning: ${e.message})`);
+    }
+
+    // Delete the item. Use the wrapper's deleteItem which calls
+    // targetList.removeItem (the permanent-delete handler, despite the name).
+    await this.deleteItem(itemName);
+
+    // Re-add into the target category. addItemToCategory handles the
+    // matchId computation (sibling-derived → systemCategory → slug fallback).
+    const newItem = await this.addItemToCategory(itemName, categoryName, {
+      quantity: preserved.quantity,
+      notes: preserved.details,
+    });
+
+    // Re-apply checked status if needed (addItem creates unchecked).
+    if (preserved.checked && newItem) {
+      newItem.checked = true;
+      await newItem.save();
+    }
+
+    if (lostFields.length > 0) {
+      console.error(
+        `WARN: moving "${itemName}" to "${category.name}" via delete-and-recreate dropped: ` +
+        lostFields.join(', ')
+      );
+    }
+    console.error(`Moved "${itemName}" to category "${category.name}" (delete-and-recreate)`);
+
+    return {
+      itemName,
+      categoryName: category.name,
+      droppedFields: lostFields,
+      // Quantity is omitted intentionally: the lib's patched _encode skips it
+      // because the modern protobuf uses quantityPb (a structured object) which
+      // neither this lib nor the existing add path supports. Same for any item
+      // added via shopping.add_item — not a regression introduced here.
+      preservedFields: ['name', 'details', 'checked'],
+    };
   }
 
   _buildCategoryMap() {
