@@ -11,7 +11,11 @@
 export function createMockServer() {
   const handlers = {};
   const server = {
-    registerTool: (name, _schema, handler) => { handlers[name] = handler; },
+    registerTool: (name, _schema, handler) => {
+      handlers[name] = handler;
+      // Return a stub registeredTool so callers can call .update() without error.
+      return { update: () => {} };
+    },
     // elicitation.js calls server.server.getClientCapabilities() to detect support.
     // Returning null means elicitation is disabled; missing-param paths throw instead.
     server: { getClientCapabilities: () => null },
@@ -34,6 +38,7 @@ export class MockAnyListClient {
     this._labels = [];
     this._collections = [];
     this._pendingImport = null;
+    this._stores = [];
   }
 
   reset() {
@@ -49,6 +54,7 @@ export class MockAnyListClient {
     this._labels = [];
     this._collections = [];
     this._pendingImport = null;
+    this._stores = [];
   }
 
   async connect(listName = null) {
@@ -66,9 +72,10 @@ export class MockAnyListClient {
   }
 
   getLists() { return this._lists; }
+  getStores() { return this._stores || []; }
 
-  async addItem(name, qty, notes, category) {
-    this._items.push({ name, quantity: qty, notes, category });
+  async addItem(name, qty, notes, category, store = null) {
+    this._items.push({ name, quantity: qty, notes, category, store });
   }
 
   async removeItem(name) {
@@ -83,7 +90,7 @@ export class MockAnyListClient {
     this._items.splice(idx, 1);
   }
 
-  async getItems(includeChecked = false, includeNotes = false) {
+  async getItems(includeChecked = false, includeNotes = false, includeStore = false) {
     let items = [...this._items];
     if (!includeChecked) items = items.filter(i => !i.checked);
     return items.map(i => ({
@@ -92,7 +99,14 @@ export class MockAnyListClient {
       checked: i.checked || false,
       category: i.category || 'other',
       ...(includeNotes && i.notes ? { note: i.notes } : {}),
+      ...(includeStore && i.store ? { store: i.store } : {}),
     }));
+  }
+
+  async setItemStore(name, store) {
+    const item = this._items.find(i => i.name === name);
+    if (!item) throw new Error(`Item "${name}" not found in list`);
+    item.store = store || null;
   }
 
   async getFavoriteItems() { return this._favorites; }

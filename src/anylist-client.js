@@ -14,6 +14,7 @@ Item.prototype._encode = function() {
     userId: this._userId,
     categoryMatchId: this._categoryMatchId,
     manualSortIndex: this._manualSortIndex,
+    storeIds: this._storeIds || [],
   });
 };
 
@@ -104,7 +105,7 @@ class AnyListClient {
   }
 
   // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null, category = "other") {
+  async addItem(itemName, quantity = 1, notes = null, category = "other", store = null) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
@@ -117,6 +118,7 @@ class AnyListClient {
 
       if (existingItem) {
         // Item exists - check if it's checked (completed)
+
         if (existingItem.checked) {
           // Uncheck the item to make it active again
           existingItem.checked = false;
@@ -164,6 +166,10 @@ class AnyListClient {
         }
 
         console.error(`Added new item: ${newItem.name}`);
+      }
+
+      if (store) {
+        await this.setItemStore(itemName, store);
       }
 
     } catch (error) {
@@ -258,6 +264,9 @@ class AnyListClient {
         if (includeNotes && item.details) {
           result.note = item.details;
         }
+        const store = (this.targetList.stores || []).find(s => s.identifier === item.storeIds[0]);
+        result.store = store ? store.name : null;
+        
         return result;
       });
     } catch (error) {
@@ -287,6 +296,64 @@ class AnyListClient {
       console.error(`Failed to build category map: ${error.message}`);
     }
     return categoryMap;
+  }
+
+  // ===== STORES =====
+
+  getStores() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    return this.targetList.stores || [];
+  }
+
+  async setItemStore(itemName, storeName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const item = this.targetList.getItemByName(itemName);
+    if (!item) {
+      throw new Error(`Item "${itemName}" not found in list`);
+    }
+    let storeIds = [];
+    if (storeName) {
+      const store = this.targetList.findStoreByName(storeName);
+      if (!store) {
+        const available = (this.targetList.stores || []).map(s => s.name).join(', ') || 'none';
+        throw new Error(`Store "${storeName}" not found. Available stores: ${available}`);
+      }
+      storeIds = [store.identifier];
+    }
+    await item.setStores(storeIds);
+  }
+
+  async createStore(storeName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    try {
+      const store = await this.targetList.createStore(storeName);
+      console.error(`Created store: ${store.name}`);
+      return store;
+    } catch (error) {
+      throw new Error(`Failed to create store "${storeName}": ${error.message}`);
+    }
+  }
+
+  async deleteStore(storeName) {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
+    }
+    const store = this.targetList.findStoreByName(storeName);
+    if (!store) {
+      throw new Error(`Store "${storeName}" not found`);
+    }
+    try {
+      await this.targetList.deleteStore(store.identifier);
+      console.error(`Deleted store: ${storeName}`);
+    } catch (error) {
+      throw new Error(`Failed to delete store "${storeName}": ${error.message}`);
+    }
   }
 
   // ===== RECIPES =====

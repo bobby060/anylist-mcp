@@ -2,12 +2,40 @@ import { z } from "zod";
 import { textResponse, errorResponse } from "./helpers.js";
 import { createElicitationHelpers } from "./elicitation.js";
 
-// Default categories recognized by anylist
+// Default categories recognized by anylist.
 const valid_categories = ["baby","bakery","beverages","breakfast-and-cereal","condiments-oils-and-salad-dressings",
   "cooking-and-baking","dairy","frozen-foods","grains-pasta-and-side-dishes",
   "health-and-personal-care","household-and-cleaning","meat","pet-supplies",
   "produce","seafood","snacks-cookies-and-candy","soups-and-canned-goods",
   "wine-beer-spirits","other"];
+
+  // TODO: What does this do?
+function buildDescription(stores) {
+  const base = `Manage AnyList shopping lists and items. Actions:
+- list_lists: Show all lists with item counts
+- list_items: Show items on a list (grouped by category)
+- add_item: Add an item to a list
+- set_item_store: Assign or clear the store for an existing item
+- check_item: Check off (complete) an item
+- delete_item: Permanently remove an item from a list
+- get_favorites: Get favorite items for a list
+- get_recents: Get recently added items for a list
+- list_stores: list stores available for the list (if any)`;
+  if (!stores || stores.length === 0) return base;
+  const storeList = stores.map(s => s.name).join(', ');
+  return `${base}\n\nAvailable stores: ${storeList}`;
+}
+
+async function validateStoreName(client, storeName) {
+  if (!storeName) return { valid: true, message: null };
+  const stores = client.getStores();
+  const storeNames = stores.map(s => s.name.toLowerCase());
+  if (!storeNames.includes(storeName.toLowerCase())) {
+    return { valid: false, message: `Store "${storeName}" not found in list "${client.targetList.name}". Available stores: ${storeNames.join(", ")}.
+    Create a new store from the web application or mobile app, then try again.` };
+  }
+  return { valid: true, message: null };
+}
 
 export function register(server, getClient) {
   const { elicitListName, elicitItemChoice, elicitRequiredField } = createElicitationHelpers(server);
@@ -29,25 +57,22 @@ export function register(server, getClient) {
     return await elicitItemChoice(itemName, matches);
   }
 
-  server.registerTool("shopping", {
+  let lastStoreSignature = '';
+
+  const registeredTool = server.registerTool("shopping", {
     title: "Shopping Lists & Items",
-    description: `Manage AnyList shopping lists and items. Actions:
-- list_lists: Show all lists with item counts
-- list_items: Show items on a list (grouped by category)
-- add_item: Add an item to a list
-- check_item: Check off (complete) an item
-- delete_item: Permanently remove an item from a list
-- get_favorites: Get favorite items for a list
-- get_recents: Get recently added items for a list`,
+    description: buildDescription([]),
     inputSchema: {
-      action: z.enum(["list_lists", "list_items", "add_item", "check_item", "delete_item", "get_favorites", "get_recents"]).describe("The shopping action to perform"),
+      action: z.enum(["list_lists", "list_items", "add_item", 
+        "set_item_store", "check_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
       list_name: z.string().optional().describe("Name of the list (defaults to configured default list)"),
-      name: z.string().optional().describe("Item name (required for add_item, check_item, delete_item)"),
+      name: z.string().optional().describe("Item name (required for add_item, set_item_store, check_item, delete_item)"),
       quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
       category: z.enum(valid_categories).optional().describe("Category for the item (add_item only, defaults to 'other')"),
+      store_name: z.string().optional().describe("Store to assign to this item (add_item and set_item_store only; omit or leave blank to clear)"),
     }
   }, async (params) => {
     const { action, list_name, name, quantity, notes, include_checked, include_notes, category } = params;
@@ -59,6 +84,12 @@ export function register(server, getClient) {
       switch (action) {
         case "list_lists": {
           await client.connect(list_name || null);
+          const stores = client.getStores();
+          const sig = stores.map(s => s.name).join(',');
+          if (sig !== lastStoreSignature) {
+            lastStoreSignature = sig;
+            registeredTool.update({ description: buildDescription(stores) });
+          }
           const lists = client.getLists();
           if (lists.length === 0) return textResponse("No lists found in the account.");
           const output = lists.map(l => `- ${l.name} (${l.uncheckedCount} unchecked items)`).join("\n");
@@ -74,6 +105,12 @@ export function register(server, getClient) {
             }
           }
           await client.connect(resolvedListName);
+          const stores = client.getStores();
+          const sig = stores.map(s => s.name).join(',');
+          if (sig !== lastStoreSignature) {
+            lastStoreSignature = sig;
+            registeredTool.update({ description: buildDescription(stores) });
+          }
           const items = await client.getItems(include_checked || false, include_notes || false);
           if (items.length === 0) {
             return textResponse(include_checked
@@ -91,7 +128,8 @@ export function register(server, getClient) {
               const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
               const status = item.checked ? " ✓" : "";
               const note = item.note ? ` [${item.note}]` : "";
-              return `  - ${item.name}${qty}${status}${note}`;
+              const store = item.store ? ` @${item.store}` : "";
+              return `  - ${item.name}${qty}${status}${note}${store}`;
             }).join("\n");
             return `**${category}**\n${categoryItems}`;
           }).join("\n\n");
@@ -101,8 +139,31 @@ export function register(server, getClient) {
           let itemName = name;
           if (!itemName) itemName = await elicitRequiredField("name", "What item would you like to add?");
           await client.connect(list_name);
-          await client.addItem(itemName, quantity || 1, notes || null, params.category || "other");
+          
+          const {valid, message} = await validateStoreName(client, params.store_name);
+          if (!valid)
+            return errorResponse(message); 
+
+          await client.addItem(itemName, quantity || 1, notes || null, params.category || "other", params.store_name || null);
           return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"`);
+        }
+        case "set_item_store": {
+          // TODO: Do we really need this tool?
+          // Validate that the store exists in the list's stores, if provided.
+          
+          let itemName = name;
+          if (!itemName) itemName = await elicitRequiredField("name", "Which item would you like to assign to a store?");
+          await client.connect(list_name);
+          const {valid, message} = await validateStoreName(client, params.store_name);
+          if (!valid)
+            return errorResponse(message); 
+
+          const resolved = await resolveItemName(client, itemName);
+          await client.setItemStore(resolved, params.store_name || null);
+          const msg = params.store_name
+            ? `Assigned "${resolved}" to store "${params.store_name}"`
+            : `Cleared store assignment for "${resolved}"`;
+          return textResponse(msg);
         }
         case "check_item": {
           let itemName = name;
@@ -133,6 +194,13 @@ export function register(server, getClient) {
           if (items.length === 0) return textResponse(`No recent items for list "${client.targetList.name}".`);
           const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
           return textResponse(`Recent items for "${client.targetList.name}" (${items.length}):\n${list}`);
+        }
+        case "list_stores": {
+          await client.connect(list_name || null);
+          const stores = client.getStores();
+          if (stores.length === 0) return textResponse(`No stores found for list "${client.targetList.name}".`);
+          const list = stores.map(s => `- ${s.name}`).join('\n');
+          return textResponse(`Stores for "${client.targetList.name}" (${stores.length}):\n${list}`);
         }
       }
     } catch (error) {

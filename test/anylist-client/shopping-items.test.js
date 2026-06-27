@@ -8,6 +8,7 @@ const ITEM = '🧪 Test Item';
 const ITEM_QTY = '🧪 Test Item Qty';
 const ITEM_NOTES = '🧪 Test Item Notes';
 const ITEM_CATEGORY = '🧪 Test Item Category';
+const ITEM_STORE = '🧪 Test Item Store';
 
 export async function runShoppingItemsTests() {
   console.log('\n🛒 Shopping Items');
@@ -16,7 +17,7 @@ export async function runShoppingItemsTests() {
   const client = await createConnectedClient();
 
   // Pre-clean
-  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY]) {
+  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY, ITEM_STORE]) {
     try { await client.deleteItem(name); } catch {}
   }
 
@@ -174,6 +175,57 @@ export async function runShoppingItemsTests() {
     if (item.note !== undefined) throw new Error('Note should be absent when include_notes=false');
   });
 
+  // ── stores ───────────────────────────────────────────────────────────────
+
+  await test('getStores returns an array', async () => {
+    const stores = client.getStores();
+    if (!Array.isArray(stores)) throw new Error('getStores() should return an array');
+  });
+
+  await test('getStores entries have identifier and name', async () => {
+    const stores = client.getStores();
+    for (const s of stores) {
+      if (typeof s.identifier !== 'string') throw new Error('Store identifier must be a string');
+      if (typeof s.name !== 'string') throw new Error('Store name must be a string');
+    }
+  });
+
+  await test('setItemStore assigns store to item (skips if no stores configured)', async () => {
+    const stores = client.getStores();
+    if (stores.length === 0) {
+      console.log('    ⚠ No stores configured — skipping store assignment test');
+      return;
+    }
+    await client.addItem(ITEM_STORE, 1);
+    await client.setItemStore(ITEM_STORE, stores[0].name);
+    const items = await client.getItems(false, false, true);
+    const item = items.find(i => i.name === ITEM_STORE);
+    if (!item) throw new Error('Item not found after setItemStore');
+    if (item.store !== stores[0].name) throw new Error(`Expected store "${stores[0].name}", got "${item.store}"`);
+  });
+
+  await test('setItemStore with null clears store (skips if no stores configured)', async () => {
+    const stores = client.getStores();
+    if (stores.length === 0) return;
+    await client.setItemStore(ITEM_STORE, null);
+    const items = await client.getItems(false, false, true);
+    const item = items.find(i => i.name === ITEM_STORE);
+    if (!item) throw new Error('Item not found after clearing store');
+    if (item.store) throw new Error(`Store should be cleared, got "${item.store}"`);
+  });
+
+  await test('setItemStore with unknown store name throws helpful error', async () => {
+    await client.addItem(ITEM_STORE, 1);
+    let threw = false;
+    try {
+      await client.setItemStore(ITEM_STORE, '🚫 No Such Store');
+    } catch (e) {
+      threw = true;
+      if (!e.message.includes('not found')) throw new Error(`Expected "not found" in error, got: ${e.message}`);
+    }
+    if (!threw) throw new Error('Should have thrown for unknown store');
+  });
+
   // ── disconnected client ───────────────────────────────────────────────────
 
   await test('operations without connection throw "connect() first"', async () => {
@@ -183,6 +235,8 @@ export async function runShoppingItemsTests() {
       () => dc.removeItem('x'),
       () => dc.deleteItem('x'),
       () => dc.getItems(),
+      () => dc.getStores(),
+      () => dc.setItemStore('x', 'y'),
     ];
     for (const op of ops) {
       let threw = false;
@@ -195,7 +249,7 @@ export async function runShoppingItemsTests() {
   });
 
   // Cleanup
-  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY]) {
+  for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY, ITEM_STORE]) {
     try { await client.deleteItem(name); } catch {}
   }
 
