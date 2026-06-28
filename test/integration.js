@@ -57,30 +57,30 @@ try {
     return text.split('\n')[0];
   });
 
-  // Shopping: list_items (Groceries)
-  await test('shopping → list_items (Groceries)', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Groceries' } });
+  // Shopping: list_items (Test List)
+  await test('shopping → list_items (Test List)', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
     return r.content[0].text.split('\n')[0];
   });
 
   // Shopping: add_item, then check_item
   const testItem = `🧪 Integration Test ${Date.now()}`;
   await test(`shopping → add_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: testItem, list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: testItem, list_name: 'Test List' } });
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
     return text;
   });
 
   await test(`shopping → check_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: testItem, list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: testItem, list_name: 'Test List' } });
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
     return text;
   });
 
   await test(`shopping → delete_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: testItem, list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: testItem, list_name: 'Test List' } });
     const text = r.content[0].text;
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
     return text;
@@ -90,7 +90,7 @@ try {
   const categoryTestItem = `🧪 Category Test ${Date.now()}`;
   await test(`shopping → add_item with category ("${categoryTestItem}", produce)`, async () => {
     const r = await client.callTool({ name: 'shopping', arguments: {
-      action: 'add_item', name: categoryTestItem, list_name: 'Groceries', category: 'produce',
+      action: 'add_item', name: categoryTestItem, list_name: 'Test List', category: 'produce',
     }});
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
@@ -98,7 +98,7 @@ try {
   });
 
   await test(`shopping → list_items shows "${categoryTestItem}" under produce`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
     const text = r.content[0].text;
     if (!text.includes(categoryTestItem)) throw new Error(`Item "${categoryTestItem}" not found in list`);
     const lower = text.toLowerCase();
@@ -111,7 +111,7 @@ try {
 
   await test(`shopping → delete_item ("${categoryTestItem}")`, async () => {
     const r = await client.callTool({ name: 'shopping', arguments: {
-      action: 'delete_item', name: categoryTestItem, list_name: 'Groceries',
+      action: 'delete_item', name: categoryTestItem, list_name: 'Test List',
     }});
     const text = r.content[0].text;
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
@@ -120,13 +120,13 @@ try {
 
   // Shopping: get_favorites
   await test('shopping → get_favorites', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: 'Test List' } });
     return r.content[0].text.split('\n')[0];
   });
 
   // Shopping: get_recents
   await test('shopping → get_recents', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_recents', list_name: 'Groceries' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_recents', list_name: 'Test List' } });
     return r.content[0].text.split('\n')[0];
   });
 

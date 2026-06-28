@@ -31,6 +31,8 @@ Manage shopping lists and items.
 | `notes` | string | No | Item notes (add_item only) |
 | `include_checked` | boolean | No | Include checked-off items (list_items only) |
 | `include_notes` | boolean | No | Include item notes in output (list_items only) |
+| `store_name` | string | No | Filter items by store (add_items, set_item_category only) |
+| `category` | string | No | Category for item (add_item only) |
 
 **Actions:**
 
@@ -42,7 +44,7 @@ Manage shopping lists and items.
 { "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
 
 // Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic" } }
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store": "Costco"} }
 
 // Check off an item (supports partial name matching)
 { "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
@@ -55,6 +57,11 @@ Manage shopping lists and items.
 
 // Get recently added items for a list
 { "name": "shopping", "arguments": { "action": "get_recents" } }
+
+// Set store for an item
+{ "name": "shopping", "arguments": { "action": "set_item_store", "name": "Milk", "store_name": "Costco" } }
+
+// Set category for an item
 ```
 
 ---

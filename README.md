@@ -4,9 +4,21 @@ An MCP server that integrates with [AnyList](https://www.anylist.com/) — shopp
 
 Two deployment modes:
 - **Local (stdio)** — runs on your machine alongside Claude Desktop or Claude Code. Fastest setup, no server required.
-- **HTTP server** — runs in Docker behind a Cloudflare Tunnel. Required for Claude Web and Claude Mobile, and useful for sharing access across devices or users.
+- **HTTP server** — runs in Docker behind a Cloudflare Tunnel. Required for Claude Web, Claude Mobile, or home assistant and useful for sharing access across devices or users.
 
-Functionality is organized into **5 domain-grouped tools** rather than 18+ individual ones. See [docs/tools.md](docs/tools.md) for the full tool reference.
+## Tools Overview
+
+The MCP server provides **5 domain-grouped tools** rather than 18+ individual ones:
+
+- **shopping** — Manage shopping lists and items: add, check off, delete, organize by category and store, and browse favorites
+- **recipes** — Browse, create, and import recipes from URLs; includes ingredient and step parsing
+- **meal_plan** — Schedule meals on a calendar with optional links to recipes
+- **recipe_collections** — Organize recipes into curated named collections
+- **health_check** — Verify your connection to AnyList and access to target lists
+
+These tools work together to enable typical workflows: browse or create recipes → plan meals → add ingredients to your shopping list. See [docs/tools.md](docs/tools.md) for the complete reference including all actions and parameters.
+
+
 
 ---
 
@@ -125,7 +137,7 @@ make pack   # produces anylist-mcp.mcpb
 ## Roadmap
 
 - **Google OAuth** — allow users to sign in to the HTTP MCP server with their Google account instead of a separate password.
-
+- **Web gui-based workflow for created oauth client credentials**
 ---
 
 ## Credits
