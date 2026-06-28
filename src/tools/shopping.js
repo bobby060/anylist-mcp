@@ -15,7 +15,6 @@ function buildDescription(stores) {
 - list_lists: Show all lists with item counts
 - list_items: Show items on a list (grouped by category)
 - add_item: Add an item to a list
-- set_item_store: Assign or clear the store for an existing item
 - check_item: Check off (complete) an item
 - delete_item: Permanently remove an item from a list
 - get_favorites: Get favorite items for a list
@@ -146,24 +145,6 @@ export function register(server, getClient) {
 
           await client.addItem(itemName, quantity || 1, notes || null, params.category || "other", params.store_name || null);
           return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"`);
-        }
-        case "set_item_store": {
-          // TODO: Do we really need this tool?
-          // Validate that the store exists in the list's stores, if provided.
-          
-          let itemName = name;
-          if (!itemName) itemName = await elicitRequiredField("name", "Which item would you like to assign to a store?");
-          await client.connect(list_name);
-          const {valid, message} = await validateStoreName(client, params.store_name);
-          if (!valid)
-            return errorResponse(message); 
-
-          const resolved = await resolveItemName(client, itemName);
-          await client.setItemStore(resolved, params.store_name || null);
-          const msg = params.store_name
-            ? `Assigned "${resolved}" to store "${params.store_name}"`
-            : `Cleared store assignment for "${resolved}"`;
-          return textResponse(msg);
         }
         case "check_item": {
           let itemName = name;
