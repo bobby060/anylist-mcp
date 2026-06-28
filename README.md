@@ -38,7 +38,7 @@ The fastest way to get started is to download the latest `anylist-mcp.mcpb` from
 ## Installation: Claude Code / Claude Desktop (from source)
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) v20+
 - An [AnyList](https://www.anylist.com/) account
 
 ### Setup
