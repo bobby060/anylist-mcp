@@ -237,6 +237,37 @@ class AnyListClient {
     }
   }
 
+  async uncheckItem(itemName) {
+    if (!this.targetList) {
+      const error = new Error('Not connected to any list. Call connect() first.');
+      console.error(error.message);
+      throw error;
+    }
+
+    try {
+      const existingItem = this.targetList.getItemByName(itemName);
+
+      if (!existingItem) {
+        const error = new Error(`Item "${itemName}" not found in list, so can't uncheck it`);
+        console.error(error.message);
+        throw error;
+      }
+
+      // Uncheck the item (mark as active again). No-op if already unchecked.
+      if (existingItem.checked) {
+        existingItem.checked = false;
+        await existingItem.save();
+        console.error(`Unchecked item: ${existingItem.name}`);
+      } else {
+        console.error(`Item "${itemName}" is already unchecked`);
+      }
+    } catch (error) {
+      const wrappedError = new Error(`Failed to uncheck item "${itemName}": ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
   async getItems(includeChecked = false, includeNotes = false) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
@@ -531,6 +562,83 @@ class AnyListClient {
       return { identifier: recipe.identifier, name: recipe.name };
     } catch (error) {
       throw new Error(`Failed to create recipe: ${error.message}`);
+    }
+  }
+
+  /**
+   * Partially update an existing recipe in place.
+   *
+   * Only the fields present in `fields` are changed; every other field
+   * (identifier, note, photos, rating, timestamps, and any field not passed)
+   * is carried over from the existing recipe. This is a real in-place update
+   * (`save-recipe` on the same identifier), NOT a delete + recreate, so recipe
+   * collection membership and meal-plan links that reference the recipe id
+   * survive untouched.
+   *
+   * `ingredients` and `preparationSteps`, when provided, REPLACE the existing
+   * array wholesale — they are not merged item-by-item.
+   *
+   * @param {string} recipeName - name identifying the recipe to update
+   * @param {object} fields - subset of { note, sourceName, sourceUrl, prepTime,
+   *   cookTime, servings, ingredients, preparationSteps }; keys with an
+   *   `undefined` value are ignored.
+   */
+  async updateRecipe(recipeName, fields = {}) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    try {
+      const recipes = await this.client.getRecipes();
+      const matches = recipes.filter(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      if (matches.length === 0) {
+        throw new Error(`Recipe "${recipeName}" not found`);
+      }
+      if (matches.length > 1) {
+        throw new Error(`Multiple recipes named "${recipeName}" (${matches.length}) exist. Rename or remove the duplicates so the target is unambiguous, then try again.`);
+      }
+      const existing = matches[0];
+
+      // Start from every existing field so nothing is lost on save, then
+      // override only the provided fields. Existing ingredients are serialized
+      // via toJSON() to preserve their identifiers and headings.
+      const merged = {
+        identifier: existing.identifier,
+        name: existing.name,
+        note: existing.note,
+        sourceName: existing.sourceName,
+        sourceUrl: existing.sourceUrl,
+        prepTime: existing.prepTime,
+        cookTime: existing.cookTime,
+        servings: existing.servings,
+        rating: existing.rating,
+        nutritionalInfo: existing.nutritionalInfo,
+        scaleFactor: existing.scaleFactor,
+        paprikaIdentifier: existing.paprikaIdentifier,
+        creationTimestamp: existing.creationTimestamp,
+        photoIds: existing.photoIds,
+        photoUrls: existing.photoUrls,
+        preparationSteps: existing.preparationSteps,
+        ingredients: existing.ingredients.map(i => i.toJSON()),
+      };
+
+      for (const key of ['note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps']) {
+        if (fields[key] !== undefined) merged[key] = fields[key];
+      }
+      if (fields.ingredients !== undefined) {
+        merged.ingredients = fields.ingredients.map(i => ({
+          rawIngredient: typeof i === 'string' ? i : i.rawIngredient || `${i.quantity || ''} ${i.name || ''}`.trim(),
+          name: typeof i === 'string' ? i : (i.name || i.rawIngredient || null),
+          quantity: typeof i === 'string' ? null : i.quantity || null,
+          note: typeof i === 'string' ? null : i.note || null,
+        }));
+      }
+
+      const recipe = await this.client.createRecipe(merged);
+      await recipe.save();
+      console.error(`Updated recipe: ${recipe.name}`);
+      return { identifier: recipe.identifier, name: recipe.name };
+    } catch (error) {
+      throw new Error(`Failed to update recipe: ${error.message}`);
     }
   }
 

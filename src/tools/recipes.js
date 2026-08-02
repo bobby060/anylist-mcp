@@ -12,24 +12,25 @@ export function register(server, getClient) {
 - list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
 - get: Get full recipe details (ingredients, steps) by name
 - create: Create a new recipe
+- update: Partially update an existing recipe by name (only the fields you pass change; the rest are preserved)
 - delete: Delete a recipe by name
 - import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)
 - normalize: Preview/parse a recipe from a URL or raw text without saving (set save=true to also save)`,
     inputSchema: {
-      action: z.enum(["list", "get", "create", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
-      name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
+      action: z.enum(["list", "get", "create", "update", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
+      name: z.string().optional().describe("Recipe name (required for get, create, update, delete)"),
       search: z.string().optional().describe("Search query to filter recipes (list only)"),
       ingredients: z.array(z.object({
         name: z.string().describe("Ingredient name, e.g. 'flour'"),
         quantity: z.string().describe("Quantity with unit, e.g. '2 cups'"),
-      })).optional().describe("Ingredients with name and quantity (create only)"),
-      steps: z.array(z.string()).optional().describe("Preparation steps in order (create only)"),
-      note: z.string().optional().describe("Recipe notes (create only)"),
-      source_name: z.string().optional().describe("Source name (create only)"),
-      source_url: z.string().optional().describe("Source URL (create only)"),
-      prep_time: z.number().optional().describe("Prep time in minutes (create only)"),
-      cook_time: z.number().optional().describe("Cook time in minutes (create only)"),
-      servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create only)"),
+      })).optional().describe("Ingredients with name and quantity (create, update). On update, replaces the entire ingredient list."),
+      steps: z.array(z.string()).optional().describe("Preparation steps in order (create, update). On update, replaces the entire step list."),
+      note: z.string().optional().describe("Recipe notes (create, update)"),
+      source_name: z.string().optional().describe("Source name (create, update)"),
+      source_url: z.string().optional().describe("Source URL (create, update)"),
+      prep_time: z.number().optional().describe("Prep time in minutes (create, update)"),
+      cook_time: z.number().optional().describe("Cook time in minutes (create, update)"),
+      servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create, update)"),
       url: z.string().optional().describe("URL to import recipe from (import_url, normalize)"),
       text: z.string().optional().describe("Raw recipe text to parse (normalize only)"),
       save: z.boolean().optional().describe("If true, also save normalized recipe to AnyList (normalize only, default false)"),
@@ -105,6 +106,32 @@ export function register(server, getClient) {
             servings: servings || null,
           });
           return textResponse(`Created recipe "${result.name}"`);
+        }
+        case "update": {
+          let updateRecipeName = name;
+          if (!updateRecipeName) updateRecipeName = await elicitRequiredField("name", "Which recipe would you like to update?");
+          // Build a partial patch: only fields the caller actually provided.
+          // ingredients/steps, when present, replace the whole array (see client.updateRecipe).
+          const fields = {};
+          if (ingredients !== undefined) {
+            fields.ingredients = ingredients.map(i => ({
+              name: i.name,
+              quantity: i.quantity,
+              rawIngredient: `${i.quantity} ${i.name}`.trim(),
+            }));
+          }
+          if (steps !== undefined) fields.preparationSteps = steps;
+          if (note !== undefined) fields.note = note;
+          if (source_name !== undefined) fields.sourceName = source_name;
+          if (source_url !== undefined) fields.sourceUrl = source_url;
+          if (prep_time !== undefined) fields.prepTime = prep_time;
+          if (cook_time !== undefined) fields.cookTime = cook_time;
+          if (servings !== undefined) fields.servings = servings;
+          if (Object.keys(fields).length === 0) {
+            return errorResponse('Action "update" requires at least one field to change (ingredients, steps, note, source_name, source_url, prep_time, cook_time, or servings).');
+          }
+          const updated = await client.updateRecipe(updateRecipeName, fields);
+          return textResponse(`Updated recipe "${updated.name}"`);
         }
         case "delete": {
           let deleteRecipeName = name;
