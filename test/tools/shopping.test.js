@@ -159,6 +159,34 @@ describe('shopping tool', () => {
     });
   });
 
+  describe('uncheck_item', () => {
+    it('unchecks a checked-off item', async () => {
+      client._items.push({ name: 'Milk', checked: true });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Milk' });
+      assert.ok(result.content[0].text.includes('Successfully unchecked'));
+      assert.equal(client._items[0].checked, false);
+    });
+
+    it('resolves a checked item by partial name', async () => {
+      client._items.push({ name: 'Whole Milk', checked: true });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'milk' });
+      assert.ok(result.content[0].text.includes('Successfully unchecked'));
+      assert.equal(client._items[0].checked, false);
+    });
+
+    it('returns error when no checked item matches', async () => {
+      client._items.push({ name: 'Milk', checked: false });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Milk' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('No checked-off item'));
+    });
+
+    it('returns error for non-existent item', async () => {
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Ghost' });
+      assert.equal(result.isError, true);
+    });
+  });
+
   describe('delete_item', () => {
     it('deletes an existing item', async () => {
       client._items.push({ name: 'Milk' });

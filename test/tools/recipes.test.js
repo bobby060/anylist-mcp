@@ -104,6 +104,64 @@ describe('recipes tool', () => {
     });
   });
 
+  describe('update', () => {
+    it('updates only the provided fields and preserves the rest', async () => {
+      client._recipes.push({
+        identifier: 'r-keep',
+        name: 'Pasta',
+        note: 'original note',
+        servings: '4',
+        rating: 5,
+        ingredients: [{ rawIngredient: '1 lb spaghetti' }],
+        preparationSteps: ['Boil'],
+      });
+      const result = await handlers.recipes({ action: 'update', name: 'Pasta', note: 'updated note' });
+      assert.ok(result.content[0].text.includes('Updated recipe "Pasta"'));
+      const r = client._recipes[0];
+      assert.equal(r.note, 'updated note');
+      // Untouched fields survive.
+      assert.equal(r.identifier, 'r-keep');
+      assert.equal(r.servings, '4');
+      assert.equal(r.rating, 5);
+      assert.deepEqual(r.preparationSteps, ['Boil']);
+    });
+
+    it('replaces the entire ingredient list when ingredients are provided', async () => {
+      client._recipes.push({
+        identifier: 'r-1',
+        name: 'Pasta',
+        ingredients: [{ rawIngredient: '1 lb spaghetti' }, { rawIngredient: '2 cloves garlic' }],
+      });
+      await handlers.recipes({
+        action: 'update',
+        name: 'Pasta',
+        ingredients: [{ name: 'penne', quantity: '1 lb' }],
+      });
+      assert.equal(client._recipes[0].ingredients.length, 1);
+      assert.equal(client._recipes[0].ingredients[0].name, 'penne');
+    });
+
+    it('returns error when no fields are provided', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'update', name: 'Pasta' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('at least one field'));
+    });
+
+    it('returns error for non-existent recipe', async () => {
+      const result = await handlers.recipes({ action: 'update', name: 'Nope', note: 'x' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('not found'));
+    });
+
+    it('returns error when the name matches multiple recipes', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'update', name: 'Pasta', note: 'x' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('Multiple recipes'));
+    });
+  });
+
   describe('delete', () => {
     it('deletes an existing recipe', async () => {
       client._recipes.push({ name: 'Old Recipe' });

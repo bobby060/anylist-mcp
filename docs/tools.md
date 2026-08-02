@@ -49,6 +49,9 @@ Manage shopping lists and items.
 // Check off an item (supports partial name matching)
 { "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
 
+// Uncheck a checked-off item (supports partial matching against checked items)
+{ "name": "shopping", "arguments": { "action": "uncheck_item", "name": "Eggs" } }
+
 // Delete an item permanently
 { "name": "shopping", "arguments": { "action": "delete_item", "name": "Eggs" } }
 
@@ -75,14 +78,14 @@ Manage AnyList recipes, including URL import and text parsing.
 | `action` | enum | Yes | See actions below |
 | `name` | string | For most actions | Recipe name |
 | `search` | string | No | Filter recipes by name (list only) |
-| `ingredients` | array | No | `[{ name, quantity }]` (create only) |
-| `steps` | string[] | No | Preparation steps (create only) |
-| `note` | string | No | Recipe notes (create only) |
-| `source_name` | string | No | Source attribution (create only) |
-| `source_url` | string | No | Source URL (create only) |
-| `prep_time` | number | No | Prep time in minutes (create only) |
-| `cook_time` | number | No | Cook time in minutes (create only) |
-| `servings` | string | No | e.g. `"4"` or `"4-6"` (create only) |
+| `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
+| `steps` | string[] | No | Preparation steps (create, update — replaces list on update) |
+| `note` | string | No | Recipe notes (create, update) |
+| `source_name` | string | No | Source attribution (create, update) |
+| `source_url` | string | No | Source URL (create, update) |
+| `prep_time` | number | No | Prep time in minutes (create, update) |
+| `cook_time` | number | No | Cook time in minutes (create, update) |
+| `servings` | string | No | e.g. `"4"` or `"4-6"` (create, update) |
 | `url` | string | For import/normalize | URL to fetch recipe from |
 | `text` | string | For normalize | Raw recipe text to parse |
 | `save` | boolean | No | Save normalized result to AnyList (normalize only) |
@@ -111,6 +114,11 @@ Manage AnyList recipes, including URL import and text parsing.
     "steps": ["Boil pasta", "Sauté garlic in oil", "Toss together"],
     "servings": "4"
 } }
+
+// Partially update a recipe — only the fields you pass change; the rest
+// (identifier, note, photos, collection membership, meal-plan links) are kept.
+// ingredients and steps, when provided, replace the whole array.
+{ "name": "recipes", "arguments": { "action": "update", "name": "Simple Pasta", "servings": "6", "note": "Doubled the garlic" } }
 
 // Delete a recipe
 { "name": "recipes", "arguments": { "action": "delete", "name": "Simple Pasta" } }
