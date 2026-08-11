@@ -49,6 +49,96 @@ describe('shopping tool', () => {
     });
   });
 
+  describe('add_items', () => {
+    it('adds multiple items from plain names', async () => {
+      const result = await handlers.shopping({ action: 'add_items', items: ['Milk', 'Eggs', 'Bread'] });
+      assert.ok(result.content[0].text.includes('Added 3 of 3 items'));
+      assert.equal(client._items.length, 3);
+      assert.deepEqual(client._items.map(i => i.name), ['Milk', 'Eggs', 'Bread']);
+    });
+
+    it('adds items with quantity, notes and category', async () => {
+      await handlers.shopping({
+        action: 'add_items',
+        items: [{ name: 'Eggs', quantity: 2, notes: 'organic', category: 'dairy' }],
+      });
+      assert.equal(client._items[0].quantity, 2);
+      assert.equal(client._items[0].notes, 'organic');
+      assert.equal(client._items[0].category, 'dairy');
+    });
+
+    it('defaults quantity to 1 and category to other', async () => {
+      await handlers.shopping({ action: 'add_items', items: ['Milk'] });
+      assert.equal(client._items[0].quantity, 1);
+      assert.equal(client._items[0].category, 'other');
+    });
+
+    it('mixes plain names and objects', async () => {
+      await handlers.shopping({ action: 'add_items', items: ['Milk', { name: 'Eggs', quantity: 12 }] });
+      assert.equal(client._items.length, 2);
+      assert.equal(client._items[1].quantity, 12);
+    });
+
+    it('continues past a failing item and reports it', async () => {
+      client.addItem = async (name) => {
+        if (name === 'Eggs') throw new Error('boom');
+        client._items.push({ name });
+      };
+      const result = await handlers.shopping({ action: 'add_items', items: ['Milk', 'Eggs', 'Bread'] });
+      const text = result.content[0].text;
+      assert.equal(result.isError, true);
+      assert.ok(text.includes('Added 2 of 3 items'));
+      assert.ok(text.includes('✓ Milk'));
+      assert.ok(text.includes('✗ Eggs: boom'));
+      assert.ok(text.includes('✓ Bread'));
+      assert.deepEqual(client._items.map(i => i.name), ['Milk', 'Bread']);
+    });
+
+    it('rejects an invalid category without aborting the batch', async () => {
+      const result = await handlers.shopping({
+        action: 'add_items',
+        items: [{ name: 'Soda', category: 'invalid-category' }, 'Milk'],
+      });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('invalid category "invalid-category"'));
+      assert.deepEqual(client._items.map(i => i.name), ['Milk']);
+    });
+
+    it('assigns a store to an item', async () => {
+      client._stores = [{ name: 'Costco' }];
+      await handlers.shopping({ action: 'add_items', items: [{ name: 'Milk', store_name: 'Costco' }] });
+      assert.equal(client._items[0].store, 'Costco');
+    });
+
+    it('rejects an unknown store without aborting the batch', async () => {
+      client._stores = [{ name: 'Costco' }];
+      const result = await handlers.shopping({
+        action: 'add_items',
+        items: [{ name: 'Milk', store_name: 'Nowhere' }, 'Eggs'],
+      });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('Store "Nowhere" not found'));
+      assert.deepEqual(client._items.map(i => i.name), ['Eggs']);
+    });
+
+    it('errors on a missing or empty items array', async () => {
+      const missing = await handlers.shopping({ action: 'add_items' });
+      assert.equal(missing.isError, true);
+      assert.ok(missing.content[0].text.includes('non-empty "items" array'));
+
+      const empty = await handlers.shopping({ action: 'add_items', items: [] });
+      assert.equal(empty.isError, true);
+    });
+
+    it('connects to the list only once for the whole batch', async () => {
+      let connects = 0;
+      const realConnect = client.connect.bind(client);
+      client.connect = async (n) => { connects++; return realConnect(n); };
+      await handlers.shopping({ action: 'add_items', items: ['Milk', 'Eggs', 'Bread'] });
+      assert.equal(connects, 1);
+    });
+  });
+
   describe('check_item', () => {
     it('checks off an existing item', async () => {
       client._items.push({ name: 'Milk', checked: false });

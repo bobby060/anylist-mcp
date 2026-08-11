@@ -15,6 +15,7 @@ function buildDescription(stores) {
 - list_lists: Show all lists with item counts
 - list_items: Show items on a list (grouped by category)
 - add_item: Add an item to a list
+- add_items: Add several items to a list in one call (use this instead of repeating add_item)
 - check_item: Check off (complete) an item
 - delete_item: Permanently remove an item from a list
 - get_favorites: Get favorite items for a list
@@ -62,10 +63,20 @@ export function register(server, getClient) {
     title: "Shopping Lists & Items",
     description: buildDescription([]),
     inputSchema: {
-      action: z.enum(["list_lists", "list_items", "add_item", 
+      action: z.enum(["list_lists", "list_items", "add_item", "add_items",
         "set_item_store", "check_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
       list_name: z.string().optional().describe("Name of the list (defaults to configured default list)"),
       name: z.string().optional().describe("Item name (required for add_item, set_item_store, check_item, delete_item)"),
+      items: z.array(z.union([
+        z.string(),
+        z.object({
+          name: z.string(),
+          quantity: z.number().min(1).optional(),
+          notes: z.string().optional(),
+          category: z.enum(valid_categories).optional(),
+          store_name: z.string().optional(),
+        })
+      ])).optional().describe("Items to add (add_items only). Each entry is either a plain item name or an object with name/quantity/notes/category/store_name"),
       quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
@@ -145,6 +156,31 @@ export function register(server, getClient) {
 
           await client.addItem(itemName, quantity || 1, notes || null, params.category || "other", params.store_name || null);
           return textResponse(`Successfully added "${itemName}" to list "${client.targetList.name}"`);
+        }
+        case "add_items": {
+          const entries = params.items;
+          if (!entries || entries.length === 0) throw new Error(`Action "add_items" requires a non-empty "items" array`);
+          await client.connect(list_name);
+          const added = [];
+          const failed = [];
+          for (const entry of entries) {
+            const item = typeof entry === "string" ? { name: entry } : entry;
+            try {
+              if (item.category && !valid_categories.includes(item.category)) {
+                throw new Error(`invalid category "${item.category}"`);
+              }
+              const { valid, message } = await validateStoreName(client, item.store_name);
+              if (!valid) throw new Error(message);
+              await client.addItem(item.name, item.quantity || 1, item.notes || null, item.category || "other", item.store_name || null);
+              added.push(item.name);
+            } catch (error) {
+              failed.push(`${item.name}: ${error.message}`);
+            }
+          }
+          const summary = [`Added ${added.length} of ${entries.length} items to list "${client.targetList.name}":`];
+          added.forEach(n => summary.push(`  ✓ ${n}`));
+          failed.forEach(f => summary.push(`  ✗ ${f}`));
+          return failed.length > 0 ? errorResponse(summary.join("\n")) : textResponse(summary.join("\n"));
         }
         case "check_item": {
           let itemName = name;
