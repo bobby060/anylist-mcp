@@ -71,13 +71,13 @@ export function register(server, getClient) {
         z.string(),
         z.object({
           name: z.string(),
-          quantity: z.number().min(1).optional(),
+          quantity: z.union([z.number().min(1), z.string().min(1)]).optional(),
           notes: z.string().optional(),
           category: z.enum(valid_categories).optional(),
           store_name: z.string().optional(),
         })
       ])).optional().describe("Items to add (add_items only). Each entry is either a plain item name or an object with name/quantity/notes/category/store_name"),
-      quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
+      quantity: z.union([z.number().min(1), z.string().min(1)]).optional().describe("Item quantity, e.g. 2 or \"500 g\" (add_item only, defaults to 1)"),
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
@@ -135,7 +135,8 @@ export function register(server, getClient) {
           });
           const itemList = Object.keys(itemsByCategory).sort().map(category => {
             const categoryItems = itemsByCategory[category].map(item => {
-              const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
+              const qRaw = item.quantity == null ? "" : String(item.quantity).trim();
+              const qty = (qRaw && qRaw !== "1") ? ` (${qRaw})` : "";
               const status = item.checked ? " ✓" : "";
               const note = item.note ? ` [${item.note}]` : "";
               const store = item.store ? ` @${item.store}` : "";

@@ -1,22 +1,5 @@
 import AnyList from '../anylist-js/lib/index.js';
-import Item from '../anylist-js/lib/item.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
-
-// Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema
-Item.prototype._encode = function() {
-  return new this._protobuf.ListItem({
-    identifier: this._identifier,
-    listId: this._listId,
-    name: this._name,
-    details: this._details,
-    checked: this._checked,
-    category: this._category,
-    userId: this._userId,
-    categoryMatchId: this._categoryMatchId,
-    manualSortIndex: this._manualSortIndex,
-    storeIds: this._storeIds || [],
-  });
-};
 
 class AnyListClient {
   /**
@@ -104,7 +87,14 @@ class AnyListClient {
     }));
   }
 
-  // TODO: Update quantity
+  // Known limitation: quantity only sticks for NEW items (set via _encode during
+  // creation, below). For an existing item we fall back to existingItem.save(),
+  // which emits a `set-list-item-quantity` op — that handler does NOT populate
+  // quantityPb.rawQuantity, so the AnyList apps render no quantity change even
+  // though this server reports success. Fixing it needs a full `update-list-item`
+  // op (see Item.assignToCustomCategory), which is unsafe until Item._encode
+  // round-trips recipeId / rawIngredient / prices / photoIds. Workaround for
+  // callers: delete the item and re-add it with the new quantity.
   async addItem(itemName, quantity = 1, notes = null, category = "other", store = null) {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
@@ -150,20 +140,15 @@ class AnyListClient {
         if (category !== "other") {
           itemOptions.categoryMatchId = category;
         }
+        // Carry the quantity through creation so it lands in quantityPb.rawQuantity
+        // (List.addItem encodes the item). Bare "1" is AnyList's default, so skip it.
+        const rawQuantity = quantity == null ? "" : String(quantity).trim();
+        if (rawQuantity !== "" && rawQuantity !== "1") {
+          itemOptions.quantity = rawQuantity;
+        }
 
         const newItem = this.client.createItem(itemOptions);
         await this.targetList.addItem(newItem);
-
-        // Set quantity and notes after adding (can't be done via _encode)
-        if (quantity !== 1 || notes !== null) {
-          if (quantity !== 1) {
-            newItem.quantity = quantity;
-          }
-          if (notes !== null) {
-            newItem.details = notes;
-          }
-          await newItem.save();
-        }
 
         console.error(`Added new item: ${newItem.name}`);
       }
@@ -257,7 +242,7 @@ class AnyListClient {
       return filteredItems.map(item => {
         const result = {
           name: item.name,
-          quantity: typeof item.quantity === 'number' ? item.quantity : 1,
+          quantity: item.quantity ?? null,
           checked: item.checked || false,
           category: item.categoryMatchId || 'other'
         };
