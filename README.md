@@ -34,7 +34,7 @@ The fastest way to get started is to download the latest `anylist-mcp.mcpb` from
 ```bash
 git clone --recurse-submodules https://github.com/bobby060/anylist-mcp.git
 cd anylist-mcp
-npm install
+make install
 ```
 
 Add to your MCP config (`~/.claude/claude_desktop_config.json` or equivalent):
@@ -77,7 +77,7 @@ mkdir -p config
 cp allowed-emails.example.txt config/allowed-emails.txt   # add your email
 
 # Start server + Cloudflare quick tunnel
-docker compose --profile cloudflare-temp up --build
+make dev
 # Watch logs for the trycloudflare.com URL, then add it as an MCP server in Claude Settings/Connectors
 ```
 
@@ -90,8 +90,8 @@ Some MCP clients — like Home Assistant — require a pre-registered `client_id
 **Prerequisites:** the HTTP server must already be running and you must have an account on it.
 
 ```bash
-# Run inside the Docker container (the server must be up)
-docker compose exec anylist-mcp node scripts/create-client.js you@example.com "Home Assistant"
+# The server must be running (make dev or make prod)
+make create-client EMAIL=you@example.com NAME="Home Assistant"
 ```
 
 This prints a `client_id` and `client_secret`. **Save the secret immediately** — it is hashed in the database and cannot be retrieved later.
@@ -109,20 +109,15 @@ See **[docs/home-assistant.md](docs/home-assistant.md)** for step-by-step Home A
 ## Development
 
 ```bash
-# Unit tests (mocked, no credentials needed)
-npm test
-
-# Integration tests (requires .env with real credentials)
-npm run test:integration
-
-# Inspect with the MCP inspector
-npx @modelcontextprotocol/inspector node src/server.js
+make test                # unit tests (no credentials needed)
+make test-integration    # integration tests (requires .env with real credentials)
+make inspect             # launch the MCP inspector
 ```
 
 ### Building the desktop extension
 
 ```bash
-npm run pack   # produces anylist-mcp.mcpb
+make pack   # produces anylist-mcp.mcpb
 ```
 
 ---
