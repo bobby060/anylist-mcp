@@ -28,6 +28,11 @@ describe('shopping tool', () => {
       assert.equal(client._items[0].notes, 'organic');
     });
 
+    it('accepts a string quantity with a unit', async () => {
+      await handlers.shopping({ action: 'add_item', name: 'Flour', quantity: '500 g' });
+      assert.equal(client._items[0].quantity, '500 g');
+    });
+
 
     it ('should default to "other" category if not provided', async () => {
       await handlers.shopping({ action: 'add_item', name: 'Bread' });
@@ -181,6 +186,13 @@ describe('shopping tool', () => {
       assert.ok(result.content[0].text.includes('Bread'));
       assert.ok(result.content[0].text.includes('Dairy'));
       assert.ok(result.content[0].text.includes('Bakery'));
+    });
+
+    it('renders quantities (including units) next to the item', async () => {
+      client._items.push({ name: 'Flour', quantity: '500 g' }, { name: 'Eggs', quantity: 12 });
+      const result = await handlers.shopping({ action: 'list_items' });
+      assert.ok(result.content[0].text.includes('Flour (500 g)'));
+      assert.ok(result.content[0].text.includes('Eggs (12)'));
     });
 
     it('excludes checked items by default', async () => {

@@ -58,7 +58,7 @@ export class MockAnyListClient {
   }
 
   async connect(listName = null) {
-    const name = listName || process.env.ANYLIST_LIST_NAME || 'Groceries';
+    const name = listName || process.env.ANYLIST_LIST_NAME || 'Test List';
     this._connected = true;
     const items = this._items;
     this.targetList = {
