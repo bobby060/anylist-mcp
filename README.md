@@ -126,6 +126,10 @@ make test-integration    # integration tests (requires .env with real credential
 make inspect             # launch the MCP inspector
 ```
 
+Before opening a pull request, read **[CONTRIBUTING.md](CONTRIBUTING.md)** — new
+features and bug fixes must ship with unit tests, plus integration tests for
+anything that touches the AnyList API.
+
 ### Building the desktop extension
 
 ```bash
@@ -144,4 +148,4 @@ make pack   # produces anylist-mcp.mcpb
 
 AnyList API from a fork of [anylist](https://github.com/codetheweb/anylist) by @codetheweb.
 
-Contributions welcome — feel free to open issues and pull requests.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
