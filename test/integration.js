@@ -118,6 +118,106 @@ try {
     return text;
   });
 
+  // Shopping: add_items with plain string names
+  const bulkStringItems = [`🧪 Bulk String 1 ${Date.now()}`, `🧪 Bulk String 2 ${Date.now()}`, `🧪 Bulk String 3 ${Date.now()}`];
+  await test('shopping → add_items with plain string names', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: {
+      action: 'add_items', list_name: 'Test List', items: bulkStringItems,
+    }});
+    const text = r.content[0].text;
+    if (!text.includes(`Added ${bulkStringItems.length} of ${bulkStringItems.length} items`)) throw new Error(text);
+    return text.split('\n')[0];
+  });
+
+  await test('shopping → list_items shows items added via add_items (string names)', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
+    const text = r.content[0].text;
+    for (const itemName of bulkStringItems) {
+      if (!text.includes(itemName)) throw new Error(`Item "${itemName}" not found in list`);
+    }
+    return 'All bulk string items found';
+  });
+
+  await test('shopping → cleanup add_items (string names)', async () => {
+    for (const itemName of bulkStringItems) {
+      const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: itemName, list_name: 'Test List' } });
+      const text = r.content[0].text;
+      if (!text.toLowerCase().includes('delet')) throw new Error(`Failed to delete "${itemName}": ${text}`);
+    }
+    return `Deleted ${bulkStringItems.length} items`;
+  });
+
+  // Shopping: add_items with full JSON object items (name, quantity, notes, category)
+  const bulkObjectItems = [
+    { name: `🧪 Bulk Object 1 ${Date.now()}`, quantity: 3, notes: 'chilled', category: 'dairy' },
+    { name: `🧪 Bulk Object 2 ${Date.now()}`, quantity: 2, notes: 'ripe', category: 'produce' },
+  ];
+  await test('shopping → add_items with full JSON object items', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: {
+      action: 'add_items', list_name: 'Test List', items: bulkObjectItems,
+    }});
+    const text = r.content[0].text;
+    if (!text.includes(`Added ${bulkObjectItems.length} of ${bulkObjectItems.length} items`)) throw new Error(text);
+    return text.split('\n')[0];
+  });
+
+  await test('shopping → list_items shows full object items with notes and category', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List', include_notes: true } });
+    const text = r.content[0].text;
+    for (const item of bulkObjectItems) {
+      if (!text.includes(item.name)) throw new Error(`Item "${item.name}" not found in list`);
+      if (!text.includes(item.notes)) throw new Error(`Notes "${item.notes}" not found for "${item.name}"`);
+    }
+    return 'All bulk object items found with notes';
+  });
+
+  await test('shopping → cleanup add_items (full objects)', async () => {
+    for (const item of bulkObjectItems) {
+      const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: item.name, list_name: 'Test List' } });
+      const text = r.content[0].text;
+      if (!text.toLowerCase().includes('delet')) throw new Error(`Failed to delete "${item.name}": ${text}`);
+    }
+    return `Deleted ${bulkObjectItems.length} items`;
+  });
+
+  // Shopping: add_items with partial JSON object items (missing optional fields — relies on defaults)
+  const bulkPartialItems = [
+    { name: `🧪 Bulk Partial 1 ${Date.now()}` },
+    { name: `🧪 Bulk Partial 2 ${Date.now()}`, category: 'bakery' },
+  ];
+  await test('shopping → add_items with partial JSON object items (missing optional fields)', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: {
+      action: 'add_items', list_name: 'Test List', items: bulkPartialItems,
+    }});
+    const text = r.content[0].text;
+    if (!text.includes(`Added ${bulkPartialItems.length} of ${bulkPartialItems.length} items`)) throw new Error(text);
+    return text.split('\n')[0];
+  });
+
+  await test('shopping → list_items shows partial items with defaults applied', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
+    const text = r.content[0].text;
+    for (const item of bulkPartialItems) {
+      if (!text.includes(item.name)) throw new Error(`Item "${item.name}" not found in list`);
+    }
+    // First item had no category specified — should default to "other"
+    const lower = text.toLowerCase();
+    const otherIdx = lower.indexOf('other');
+    const firstItemIdx = lower.indexOf(bulkPartialItems[0].name.toLowerCase());
+    if (otherIdx === -1) throw new Error('"other" category heading not found for item with no category specified');
+    if (firstItemIdx < otherIdx) throw new Error('Item with no category should appear under "other" heading (default category)');
+    return 'Partial items found with default category applied';
+  });
+
+  await test('shopping → cleanup add_items (partial objects)', async () => {
+    for (const item of bulkPartialItems) {
+      const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: item.name, list_name: 'Test List' } });
+      const text = r.content[0].text;
+      if (!text.toLowerCase().includes('delet')) throw new Error(`Failed to delete "${item.name}": ${text}`);
+    }
+    return `Deleted ${bulkPartialItems.length} items`;
+  });
+
   // Shopping: get_favorites
   await test('shopping → get_favorites', async () => {
     const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: 'Test List' } });
