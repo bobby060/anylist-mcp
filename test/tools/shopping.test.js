@@ -28,6 +28,11 @@ describe('shopping tool', () => {
       assert.equal(client._items[0].notes, 'organic');
     });
 
+    it('accepts a string quantity with a unit', async () => {
+      await handlers.shopping({ action: 'add_item', name: 'Flour', quantity: '500 g' });
+      assert.equal(client._items[0].quantity, '500 g');
+    });
+
 
     it ('should default to "other" category if not provided', async () => {
       await handlers.shopping({ action: 'add_item', name: 'Bread' });
@@ -154,6 +159,34 @@ describe('shopping tool', () => {
     });
   });
 
+  describe('uncheck_item', () => {
+    it('unchecks a checked-off item', async () => {
+      client._items.push({ name: 'Milk', checked: true });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Milk' });
+      assert.ok(result.content[0].text.includes('Successfully unchecked'));
+      assert.equal(client._items[0].checked, false);
+    });
+
+    it('resolves a checked item by partial name', async () => {
+      client._items.push({ name: 'Whole Milk', checked: true });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'milk' });
+      assert.ok(result.content[0].text.includes('Successfully unchecked'));
+      assert.equal(client._items[0].checked, false);
+    });
+
+    it('returns error when no checked item matches', async () => {
+      client._items.push({ name: 'Milk', checked: false });
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Milk' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('No checked-off item'));
+    });
+
+    it('returns error for non-existent item', async () => {
+      const result = await handlers.shopping({ action: 'uncheck_item', name: 'Ghost' });
+      assert.equal(result.isError, true);
+    });
+  });
+
   describe('delete_item', () => {
     it('deletes an existing item', async () => {
       client._items.push({ name: 'Milk' });
@@ -181,6 +214,13 @@ describe('shopping tool', () => {
       assert.ok(result.content[0].text.includes('Bread'));
       assert.ok(result.content[0].text.includes('Dairy'));
       assert.ok(result.content[0].text.includes('Bakery'));
+    });
+
+    it('renders quantities (including units) next to the item', async () => {
+      client._items.push({ name: 'Flour', quantity: '500 g' }, { name: 'Eggs', quantity: 12 });
+      const result = await handlers.shopping({ action: 'list_items' });
+      assert.ok(result.content[0].text.includes('Flour (500 g)'));
+      assert.ok(result.content[0].text.includes('Eggs (12)'));
     });
 
     it('excludes checked items by default', async () => {

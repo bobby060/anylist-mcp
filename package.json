@@ -12,7 +12,8 @@
     "pack": "mcpb pack",
     "start:http": "node src/http/index.js",
     "dev:http": "node --watch src/http/index.js",
-    "test": "node --test test/*.test.js test/tools/*.test.js"
+    "test": "node --test test/*.test.js test/tools/*.test.js",
+    "release": "semantic-release"
   },
   "keywords": [
     "mcp",
@@ -32,5 +33,11 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "google-auth-library": "^10.6.2"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
+    "semantic-release": "^25.0.9"
   }
 }

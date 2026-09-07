@@ -13,6 +13,8 @@ const transport = new StdioClientTransport({
 
 const client = new Client({ name: 'integration-test', version: '1.0.0' });
 
+const LIST_NAME = process.env.ANYLIST_LIST_NAME || 'Test List';
+
 let passed = 0, failed = 0;
 async function test(name, fn) {
   try {
@@ -57,40 +59,103 @@ try {
     return text.split('\n')[0];
   });
 
-  // Shopping: list_items (Test List)
-  await test('shopping → list_items (Test List)', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
+  // Shopping: list_items
+  await test(`shopping → list_items (${LIST_NAME})`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: LIST_NAME } });
     return r.content[0].text.split('\n')[0];
   });
 
   // Shopping: add_item, then check_item
   const testItem = `🧪 Integration Test ${Date.now()}`;
   await test(`shopping → add_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: testItem, list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: testItem, list_name: LIST_NAME } });
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
     return text;
   });
 
   await test(`shopping → check_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: testItem, list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: testItem, list_name: LIST_NAME } });
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
     return text;
   });
 
   await test(`shopping → delete_item ("${testItem}")`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: testItem, list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: testItem, list_name: LIST_NAME } });
     const text = r.content[0].text;
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
     return text;
+  });
+
+  // Shopping: check_item → uncheck_item round-trip, asserting the checked state at each step
+  const uncheckItem = `🧪 Uncheck Test ${Date.now()}`;
+  await test(`shopping → add_item ("${uncheckItem}")`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: uncheckItem, list_name: 'Test List' } });
+    if (!r.content[0].text.includes('Successfully')) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  });
+
+  await test(`shopping → check_item then confirm ✓ in list_items`, async () => {
+    await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: uncheckItem, list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List', include_checked: true } });
+    const line = r.content[0].text.split('\n').find(l => l.includes(uncheckItem));
+    if (!line) throw new Error(`"${uncheckItem}" not found in list_items`);
+    if (!line.includes('✓')) throw new Error(`"${uncheckItem}" not marked checked: ${line}`);
+    return line.trim();
+  });
+
+  await test(`shopping → uncheck_item ("${uncheckItem}")`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'uncheck_item', name: uncheckItem, list_name: 'Test List' } });
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Successfully unchecked')) throw new Error(text);
+    return text;
+  });
+
+  await test(`shopping → list_items shows "${uncheckItem}" active again (no ✓)`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List', include_checked: true } });
+    const line = r.content[0].text.split('\n').find(l => l.includes(uncheckItem));
+    if (!line) throw new Error(`"${uncheckItem}" disappeared from list after uncheck`);
+    if (line.includes('✓')) throw new Error(`"${uncheckItem}" still marked checked after uncheck: ${line}`);
+    return line.trim();
+  });
+
+  await test(`shopping → uncheck_item resolves a partial name against checked items`, async () => {
+    await client.callTool({ name: 'shopping', arguments: { action: 'check_item', name: uncheckItem, list_name: 'Test List' } });
+    const partial = uncheckItem.slice(0, -4); // still a unique substring of the item
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'uncheck_item', name: partial, list_name: 'Test List' } });
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Successfully unchecked')) throw new Error(text);
+    return text;
+  });
+
+  await test(`shopping → uncheck_item on an already-unchecked item errors (no checked match)`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'uncheck_item', name: uncheckItem, list_name: 'Test List' } });
+    const text = r.content[0].text;
+    if (!r.isError) throw new Error(`expected an error, got success: ${text}`);
+    if (!text.toLowerCase().includes('no checked-off item')) throw new Error(`expected no-checked-match error, got: ${text}`);
+    return 'already-unchecked item correctly rejected';
+  });
+
+  await test(`shopping → uncheck_item on a non-existent item errors`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'uncheck_item', name: `🧪 Nope ${Date.now()}`, list_name: 'Test List' } });
+    const text = r.content[0].text;
+    if (!r.isError) throw new Error(`expected an error, got success: ${text}`);
+    if (!text.toLowerCase().includes('no checked-off item')) throw new Error(`expected error, got: ${text}`);
+    return 'non-existent item correctly rejected';
+  });
+
+  await test(`shopping → delete_item ("${uncheckItem}")`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name: uncheckItem, list_name: 'Test List' } });
+    if (!r.content[0].text.toLowerCase().includes('delet')) throw new Error(r.content[0].text);
+    return r.content[0].text;
   });
 
   // Shopping: add_item with category, confirm via list_items, then delete
   const categoryTestItem = `🧪 Category Test ${Date.now()}`;
   await test(`shopping → add_item with category ("${categoryTestItem}", produce)`, async () => {
     const r = await client.callTool({ name: 'shopping', arguments: {
-      action: 'add_item', name: categoryTestItem, list_name: 'Test List', category: 'produce',
+      action: 'add_item', name: categoryTestItem, list_name: LIST_NAME, category: 'produce',
     }});
     const text = r.content[0].text;
     if (!text.includes('Successfully')) throw new Error(text);
@@ -98,7 +163,7 @@ try {
   });
 
   await test(`shopping → list_items shows "${categoryTestItem}" under produce`, async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'list_items', list_name: LIST_NAME } });
     const text = r.content[0].text;
     if (!text.includes(categoryTestItem)) throw new Error(`Item "${categoryTestItem}" not found in list`);
     const lower = text.toLowerCase();
@@ -111,7 +176,7 @@ try {
 
   await test(`shopping → delete_item ("${categoryTestItem}")`, async () => {
     const r = await client.callTool({ name: 'shopping', arguments: {
-      action: 'delete_item', name: categoryTestItem, list_name: 'Test List',
+      action: 'delete_item', name: categoryTestItem, list_name: LIST_NAME,
     }});
     const text = r.content[0].text;
     if (!text.toLowerCase().includes('delet')) throw new Error(text);
@@ -220,13 +285,13 @@ try {
 
   // Shopping: get_favorites
   await test('shopping → get_favorites', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_favorites', list_name: LIST_NAME } });
     return r.content[0].text.split('\n')[0];
   });
 
   // Shopping: get_recents
   await test('shopping → get_recents', async () => {
-    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_recents', list_name: 'Test List' } });
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'get_recents', list_name: LIST_NAME } });
     return r.content[0].text.split('\n')[0];
   });
 
@@ -296,6 +361,117 @@ try {
     if (!text.includes(testRecipeId)) throw new Error(`Recipe ID "${testRecipeId}" not found in list output`);
     return `ID ${testRecipeId} confirmed in list`;
   });
+
+  // Recipes: update — partial, in-place. Only provided fields change; the
+  // identifier and every untouched field must survive. Never delete + recreate.
+  async function getRecipeText(nm) {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: nm } });
+    if (r.isError) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  }
+  function recipeField(text, label) {
+    const m = text.match(new RegExp(`^${label}: (.+)$`, 'm'));
+    return m ? m[1].trim() : null;
+  }
+
+  let updateCreatedAt = null;
+
+  await test(`recipes → update single field ("${testRecipe}" servings)`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: {
+      action: 'update', name: testRecipe, servings: '8',
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Updated')) throw new Error(text);
+    return text;
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  await test(`recipes → get after single-field update — servings changed, id + ingredients + steps intact`, async () => {
+    const text = await getRecipeText(testRecipe);
+    if (recipeField(text, 'Servings') !== '8') throw new Error(`servings not updated to 8:\n${text}`);
+    if (recipeField(text, 'ID') !== testRecipeId) throw new Error(`identifier changed: ${recipeField(text, 'ID')} != ${testRecipeId}`);
+    for (const ing of testIngredients) {
+      if (!text.includes(ing.name)) throw new Error(`ingredient "${ing.name}" lost after update`);
+    }
+    if (!text.includes('Mix ingredients') || !text.includes('Verify results')) throw new Error('steps lost after update');
+    updateCreatedAt = recipeField(text, 'Created');
+    return `servings=8, id ${testRecipeId} stable, ingredients + steps intact`;
+  });
+
+  await test(`recipes → update multiple fields ("${testRecipe}" note + prep_time)`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: {
+      action: 'update', name: testRecipe, note: 'Updated by integration test', prep_time: 15,
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Updated')) throw new Error(text);
+    return text;
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  await test(`recipes → get after multi-field update — note + prep set, earlier servings change persists`, async () => {
+    const text = await getRecipeText(testRecipe);
+    if (!text.includes('Updated by integration test')) throw new Error(`note not updated:\n${text}`);
+    if (recipeField(text, 'Prep') !== '15 min') throw new Error(`prep_time not updated:\n${text}`);
+    if (recipeField(text, 'Servings') !== '8') throw new Error(`servings from the earlier update was lost:\n${text}`);
+    if (recipeField(text, 'ID') !== testRecipeId) throw new Error('identifier changed after multi-field update');
+    if (updateCreatedAt && recipeField(text, 'Created') !== updateCreatedAt) throw new Error('Created timestamp changed on update');
+    return 'note + prep updated; earlier servings change and Created timestamp preserved';
+  });
+
+  const replacedIngredients = [
+    { name: 'replacement', quantity: '3 cups' },
+    { name: 'newness', quantity: '4 tsp' },
+  ];
+  await test(`recipes → update replaces the whole ingredient list`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: {
+      action: 'update', name: testRecipe, ingredients: replacedIngredients,
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Updated')) throw new Error(text);
+    return text;
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  await test(`recipes → get after ingredient replacement — new ingredients only, steps/note/servings survive, id stable`, async () => {
+    const text = await getRecipeText(testRecipe);
+    for (const ing of replacedIngredients) {
+      if (!text.includes(ing.name)) throw new Error(`new ingredient "${ing.name}" missing:\n${text}`);
+    }
+    for (const ing of testIngredients) {
+      if (text.includes(ing.name)) throw new Error(`old ingredient "${ing.name}" still present — the array was merged, not replaced`);
+    }
+    if (!text.includes('Mix ingredients') || !text.includes('Verify results')) throw new Error('steps lost after ingredient replacement');
+    if (!text.includes('Updated by integration test')) throw new Error('note lost after ingredient replacement');
+    if (recipeField(text, 'Servings') !== '8') throw new Error('servings lost after ingredient replacement');
+    if (recipeField(text, 'ID') !== testRecipeId) throw new Error('identifier changed after ingredient replacement');
+    return 'ingredient list replaced wholesale; steps/note/servings/id all intact';
+  });
+
+  await test(`recipes → update with no fields returns a clear error`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: testRecipe } });
+    const text = r.content[0].text;
+    if (!r.isError) throw new Error(`expected an error, got success: ${text}`);
+    if (!text.toLowerCase().includes('at least one field')) throw new Error(`expected no-fields error, got: ${text}`);
+    return 'update with no fields rejected';
+  });
+
+  await test(`recipes → update on a non-existent name errors; the real recipe is untouched`, async () => {
+    const missing = `🧪 No Such Recipe ${Date.now()}`;
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: missing, note: 'x' } });
+    const text = r.content[0].text;
+    if (!r.isError) throw new Error(`expected an error, got success: ${text}`);
+    if (!text.toLowerCase().includes('not found')) throw new Error(`expected not-found error, got: ${text}`);
+    const stillThere = await getRecipeText(testRecipe);
+    if (!stillThere.includes('Updated by integration test')) throw new Error('the target recipe changed after a failed update on a different name');
+    return 'not-found error returned; target recipe untouched';
+  });
+
+  // The ambiguous-name path (update errors when >1 recipe shares the name) is
+  // covered by the mocked unit tests — the `create` action refuses to make a
+  // second recipe with an existing name, so the state can't be set up here.
 
   await test(`recipes → delete ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: testRecipe } });

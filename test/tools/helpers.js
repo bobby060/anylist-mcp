@@ -58,7 +58,7 @@ export class MockAnyListClient {
   }
 
   async connect(listName = null) {
-    const name = listName || process.env.ANYLIST_LIST_NAME || 'Groceries';
+    const name = listName || process.env.ANYLIST_LIST_NAME || 'Test List';
     this._connected = true;
     const items = this._items;
     this.targetList = {
@@ -82,6 +82,12 @@ export class MockAnyListClient {
     const idx = this._items.findIndex(i => i.name === name);
     if (idx === -1) throw new Error(`Item "${name}" not found in list, so can't check it`);
     this._items[idx].checked = true;
+  }
+
+  async uncheckItem(name) {
+    const idx = this._items.findIndex(i => i.name === name);
+    if (idx === -1) throw new Error(`Item "${name}" not found in list, so can't uncheck it`);
+    this._items[idx].checked = false;
   }
 
   async deleteItem(name) {
@@ -127,6 +133,17 @@ export class MockAnyListClient {
   async createRecipe(opts) {
     this._recipes.push(opts);
     return { identifier: 'r-1', name: opts.name };
+  }
+
+  async updateRecipe(name, fields = {}) {
+    const matches = this._recipes.filter(r => r.name && r.name.toLowerCase() === name.toLowerCase());
+    if (matches.length === 0) throw new Error(`Recipe "${name}" not found`);
+    if (matches.length > 1) throw new Error(`Multiple recipes named "${name}" (${matches.length}) exist`);
+    const r = matches[0];
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) r[key] = value;
+    }
+    return { identifier: r.identifier, name: r.name };
   }
 
   async deleteRecipe(name) {

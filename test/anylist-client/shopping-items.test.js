@@ -142,7 +142,7 @@ export async function runShoppingItemsTests() {
     const item = items.find(i => i.name === ITEM);
     if (!item) throw new Error('Test item not found');
     if (typeof item.name !== 'string') throw new Error('Item should have name string');
-    if (typeof item.quantity !== 'number') throw new Error('Item should have quantity number');
+    if (item.quantity !== null && typeof item.quantity !== 'string') throw new Error('Item quantity should be a string or null');
     if (typeof item.checked !== 'boolean') throw new Error('Item should have checked boolean');
     if (typeof item.category !== 'string') throw new Error('Item should have category string');
   });

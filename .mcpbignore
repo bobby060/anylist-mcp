@@ -6,4 +6,5 @@
 test/
 test-anylist-client-unit.js
 API-DISCOVERY.md
+CHANGELOG.md
 *.mcpb

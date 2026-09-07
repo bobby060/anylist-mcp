@@ -17,6 +17,7 @@ function buildDescription(stores) {
 - add_item: Add an item to a list
 - add_items: Add several items to a list in one call (use this instead of repeating add_item)
 - check_item: Check off (complete) an item
+- uncheck_item: Uncheck a previously checked-off item (make it active again)
 - delete_item: Permanently remove an item from a list
 - get_favorites: Get favorite items for a list
 - get_recents: Get recently added items for a list
@@ -40,11 +41,11 @@ async function validateStoreName(client, storeName) {
 export function register(server, getClient) {
   const { elicitListName, elicitItemChoice, elicitRequiredField } = createElicitationHelpers(server);
 
-  function findPartialMatches(client, itemName) {
+  function findPartialMatches(client, itemName, wantChecked = false) {
     const items = client.targetList.items || [];
     const lower = itemName.toLowerCase();
     return items
-      .filter(i => !i.checked && i.name.toLowerCase().includes(lower))
+      .filter(i => Boolean(i.checked) === wantChecked && i.name.toLowerCase().includes(lower))
       .map(i => i.name);
   }
 
@@ -57,6 +58,17 @@ export function register(server, getClient) {
     return await elicitItemChoice(itemName, matches);
   }
 
+  // Symmetric to resolveItemName, but resolves against checked-off items —
+  // used by uncheck_item, which only makes sense on an already-checked item.
+  async function resolveCheckedItemName(client, itemName) {
+    const exact = client.targetList.getItemByName(itemName);
+    if (exact && exact.checked) return itemName;
+    const matches = findPartialMatches(client, itemName, true);
+    if (matches.length === 0) throw new Error(`No checked-off item matching "${itemName}" found in list`);
+    if (matches.length === 1) return matches[0];
+    return await elicitItemChoice(itemName, matches);
+  }
+
   let lastStoreSignature = '';
 
   const registeredTool = server.registerTool("shopping", {
@@ -64,20 +76,20 @@ export function register(server, getClient) {
     description: buildDescription([]),
     inputSchema: {
       action: z.enum(["list_lists", "list_items", "add_item", "add_items",
-        "set_item_store", "check_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
+        "set_item_store", "check_item", "uncheck_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
       list_name: z.string().optional().describe("Name of the list (defaults to configured default list)"),
-      name: z.string().optional().describe("Item name (required for add_item, set_item_store, check_item, delete_item)"),
+      name: z.string().optional().describe("Item name (required for add_item, set_item_store, check_item, uncheck_item, delete_item)"),
       items: z.array(z.union([
         z.string(),
         z.object({
           name: z.string(),
-          quantity: z.number().min(1).optional(),
+          quantity: z.union([z.number().min(1), z.string().min(1)]).optional(),
           notes: z.string().optional(),
           category: z.enum(valid_categories).optional(),
           store_name: z.string().optional(),
         })
       ])).optional().describe("Items to add (add_items only). Each entry is either a plain item name or an object with name/quantity/notes/category/store_name"),
-      quantity: z.number().min(1).optional().describe("Item quantity (add_item only, defaults to 1)"),
+      quantity: z.union([z.number().min(1), z.string().min(1)]).optional().describe("Item quantity, e.g. 2 or \"500 g\" (add_item only, defaults to 1)"),
       notes: z.string().optional().describe("Notes for the item (add_item only)"),
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
@@ -135,7 +147,8 @@ export function register(server, getClient) {
           });
           const itemList = Object.keys(itemsByCategory).sort().map(category => {
             const categoryItems = itemsByCategory[category].map(item => {
-              const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
+              const qRaw = item.quantity == null ? "" : String(item.quantity).trim();
+              const qty = (qRaw && qRaw !== "1") ? ` (${qRaw})` : "";
               const status = item.checked ? " ✓" : "";
               const note = item.note ? ` [${item.note}]` : "";
               const store = item.store ? ` @${item.store}` : "";
@@ -189,6 +202,14 @@ export function register(server, getClient) {
           const resolvedCheck = await resolveItemName(client, itemName);
           await client.removeItem(resolvedCheck);
           return textResponse(`Successfully checked off "${resolvedCheck}" from list "${client.targetList.name}"`);
+        }
+        case "uncheck_item": {
+          let itemName = name;
+          if (!itemName) itemName = await elicitRequiredField("name", "What item would you like to uncheck?");
+          await client.connect(list_name);
+          const resolvedUncheck = await resolveCheckedItemName(client, itemName);
+          await client.uncheckItem(resolvedUncheck);
+          return textResponse(`Successfully unchecked "${resolvedUncheck}" on list "${client.targetList.name}"`);
         }
         case "delete_item": {
           let itemName = name;
