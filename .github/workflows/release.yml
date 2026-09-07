@@ -36,13 +36,13 @@ jobs:
           submodules: true
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 24.x
           cache: npm
       - run: npm ci
       - name: Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+        run: npm run release
       - name: Get version
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
@@ -61,6 +61,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm install -g @anthropic-ai/mcpb
           npx mcpb pack
           gh release upload "v${{ steps.version.outputs.version }}" anylist-mcp.mcpb --clobber
