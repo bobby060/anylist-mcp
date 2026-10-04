@@ -78,6 +78,31 @@ describe('recipes tool', () => {
       });
       assert.equal(client._recipes[0].name, 'Full Recipe');
     });
+
+    it('stores prep/cook times in seconds', async () => {
+      await handlers.recipes({ action: 'create', name: 'Timed', prep_time: 5, cook_time: 30 });
+      assert.equal(client._recipes[0].prepTime, 300);
+      assert.equal(client._recipes[0].cookTime, 1800);
+    });
+  });
+
+  describe('times', () => {
+    it('shows stored seconds as minutes in list and get', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Chili', prepTime: 2400, cookTime: 2700 });
+      const list = await handlers.recipes({ action: 'list' });
+      assert.ok(list.content[0].text.includes('prep: 40min'));
+      assert.ok(list.content[0].text.includes('cook: 45min'));
+      const get = await handlers.recipes({ action: 'get', name: 'Chili' });
+      assert.ok(get.content[0].text.includes('Prep: 40 min'));
+      assert.ok(get.content[0].text.includes('Cook: 45 min'));
+    });
+
+    it('converts minutes to seconds on update', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Chili' });
+      await handlers.recipes({ action: 'update', name: 'Chili', prep_time: 40, cook_time: 45 });
+      assert.equal(client._recipes[0].prepTime, 2400);
+      assert.equal(client._recipes[0].cookTime, 2700);
+    });
   });
 
   describe('import_url', () => {
