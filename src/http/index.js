@@ -143,7 +143,7 @@ app.use(onboardingRouter);
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
 function createMcpServer(userId) {
-  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.8.0" });
+  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.8.1" });
   registerAllTools(mcpServer, () => getOrCreateSession(userId));
   return mcpServer;
 }

@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/bobby060/anylist-mcp/compare/v1.8.0...v1.8.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* treat recipe prep/cook times as seconds ([f0b197f](https://github.com/bobby060/anylist-mcp/commit/f0b197fd022041d0ebfae31fca713fec4456fe2e))
+
 # [1.8.0](https://github.com/bobby060/anylist-mcp/compare/v1.7.0...v1.8.0) (2026-09-07)
 
 
