@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/bobby060/anylist-mcp/compare/v1.8.1...v1.9.0) (2026-10-05)
+
+
+### Features
+
+* rename recipes via recipes.update new_name ([d469fe9](https://github.com/bobby060/anylist-mcp/commit/d469fe99206cb3ca7a8cda0e09178af38adb12f8))
+
 ## [1.8.1](https://github.com/bobby060/anylist-mcp/compare/v1.8.0...v1.8.1) (2026-10-05)
 
 
