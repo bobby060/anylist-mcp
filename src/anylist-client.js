@@ -564,9 +564,9 @@ class AnyListClient {
    * array wholesale — they are not merged item-by-item.
    *
    * @param {string} recipeName - name identifying the recipe to update
-   * @param {object} fields - subset of { note, sourceName, sourceUrl, prepTime,
-   *   cookTime, servings, ingredients, preparationSteps }; keys with an
-   *   `undefined` value are ignored.
+   * @param {object} fields - subset of { name, note, sourceName, sourceUrl,
+   *   prepTime, cookTime, servings, ingredients, preparationSteps }; keys with an
+   *   `undefined` value are ignored. `name` renames the recipe in place.
    */
   async updateRecipe(recipeName, fields = {}) {
     if (!this.client) {
@@ -582,6 +582,9 @@ class AnyListClient {
         throw new Error(`Multiple recipes named "${recipeName}" (${matches.length}) exist. Rename or remove the duplicates so the target is unambiguous, then try again.`);
       }
       const existing = matches[0];
+      if (fields.name !== undefined && recipes.some(r => r !== existing && r.name && r.name.toLowerCase() === fields.name.toLowerCase())) {
+        throw new Error(`Cannot rename to "${fields.name}": a recipe with that name already exists.`);
+      }
 
       // Start from every existing field so nothing is lost on save, then
       // override only the provided fields. Existing ingredients are serialized
@@ -606,7 +609,7 @@ class AnyListClient {
         ingredients: existing.ingredients.map(i => i.toJSON()),
       };
 
-      for (const key of ['note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps']) {
+      for (const key of ['name', 'note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps']) {
         if (fields[key] !== undefined) merged[key] = fields[key];
       }
       if (fields.ingredients !== undefined) {

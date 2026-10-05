@@ -15,13 +15,14 @@ export function register(server, getClient) {
 - list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
 - get: Get full recipe details (ingredients, steps) by name
 - create: Create a new recipe
-- update: Partially update an existing recipe by name (only the fields you pass change; the rest are preserved)
+- update: Partially update an existing recipe by name (only the fields you pass change; the rest are preserved). Pass new_name to rename it.
 - delete: Delete a recipe by name
 - import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)
 - normalize: Preview/parse a recipe from a URL or raw text without saving (set save=true to also save)`,
     inputSchema: {
       action: z.enum(["list", "get", "create", "update", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
       name: z.string().optional().describe("Recipe name (required for get, create, update, delete)"),
+      new_name: z.string().optional().describe("New name for the recipe (update only)"),
       search: z.string().optional().describe("Search query to filter recipes (list only)"),
       ingredients: z.array(z.object({
         name: z.string().describe("Ingredient name, e.g. 'flour'"),
@@ -39,7 +40,7 @@ export function register(server, getClient) {
       save: z.boolean().optional().describe("If true, also save normalized recipe to AnyList (normalize only, default false)"),
     }
   }, async (params) => {
-    const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
+    const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
     try {
       const client = await getClient();
       await client.connect(null);
@@ -116,6 +117,10 @@ export function register(server, getClient) {
           // Build a partial patch: only fields the caller actually provided.
           // ingredients/steps, when present, replace the whole array (see client.updateRecipe).
           const fields = {};
+          if (new_name !== undefined) {
+            if (!new_name.trim()) return errorResponse('Action "update": new_name cannot be empty.');
+            fields.name = new_name;
+          }
           if (ingredients !== undefined) {
             fields.ingredients = ingredients.map(i => ({
               name: i.name,
@@ -131,9 +136,10 @@ export function register(server, getClient) {
           if (cook_time !== undefined) fields.cookTime = toSeconds(cook_time);
           if (servings !== undefined) fields.servings = servings;
           if (Object.keys(fields).length === 0) {
-            return errorResponse('Action "update" requires at least one field to change (ingredients, steps, note, source_name, source_url, prep_time, cook_time, or servings).');
+            return errorResponse('Action "update" requires at least one field to change (new_name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, or servings).');
           }
           const updated = await client.updateRecipe(updateRecipeName, fields);
+          if (fields.name !== undefined) return textResponse(`Renamed recipe "${updateRecipeName}" to "${updated.name}"`);
           return textResponse(`Updated recipe "${updated.name}"`);
         }
         case "delete": {

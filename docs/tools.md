@@ -77,6 +77,7 @@ Manage AnyList recipes, including URL import and text parsing.
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
 | `name` | string | For most actions | Recipe name |
+| `new_name` | string | No | Rename the recipe (update only) |
 | `search` | string | No | Filter recipes by name (list only) |
 | `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
 | `steps` | string[] | No | Preparation steps (create, update — replaces list on update) |
@@ -119,6 +120,9 @@ Manage AnyList recipes, including URL import and text parsing.
 // (identifier, note, photos, collection membership, meal-plan links) are kept.
 // ingredients and steps, when provided, replace the whole array.
 { "name": "recipes", "arguments": { "action": "update", "name": "Simple Pasta", "servings": "6", "note": "Doubled the garlic" } }
+
+// Rename a recipe in place (fails if another recipe already has the new name)
+{ "name": "recipes", "arguments": { "action": "update", "name": "Simple Pasta", "new_name": "Garlic Pasta" } }
 
 // Delete a recipe
 { "name": "recipes", "arguments": { "action": "delete", "name": "Simple Pasta" } }

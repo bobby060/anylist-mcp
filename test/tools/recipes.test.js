@@ -130,6 +130,32 @@ describe('recipes tool', () => {
   });
 
   describe('update', () => {
+    it('renames a recipe with new_name and keeps its other fields', async () => {
+      client._recipes.push({ identifier: 'r-keep', name: 'Arroz De Peixe', rating: 3, note: 'keep me' });
+      const result = await handlers.recipes({ action: 'update', name: 'Arroz De Peixe', new_name: 'Arroz de Peixe' });
+      assert.ok(result.content[0].text.includes('Renamed recipe "Arroz De Peixe" to "Arroz de Peixe"'));
+      const r = client._recipes[0];
+      assert.equal(r.name, 'Arroz de Peixe');
+      assert.equal(r.identifier, 'r-keep');
+      assert.equal(r.rating, 3);
+      assert.equal(r.note, 'keep me');
+    });
+
+    it('applies new_name together with other fields', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta', servings: '2' });
+      await handlers.recipes({ action: 'update', name: 'Pasta', new_name: 'Garlic Pasta', servings: '4' });
+      assert.equal(client._recipes[0].name, 'Garlic Pasta');
+      assert.equal(client._recipes[0].servings, '4');
+    });
+
+    it('rejects an empty new_name without touching the recipe', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'update', name: 'Pasta', new_name: '  ' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('new_name cannot be empty'));
+      assert.equal(client._recipes[0].name, 'Pasta');
+    });
+
     it('updates only the provided fields and preserves the rest', async () => {
       client._recipes.push({
         identifier: 'r-keep',

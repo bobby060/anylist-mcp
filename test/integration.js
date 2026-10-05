@@ -487,6 +487,59 @@ try {
   // covered by the mocked unit tests — the `create` action refuses to make a
   // second recipe with an existing name, so the state can't be set up here.
 
+  // Recipes: update with new_name — rename in place, keep id, refuse name clashes
+  const renamed = `${testRecipe} renamed`;
+  await test(`recipes → rename ("${testRecipe}" → "${renamed}")`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: testRecipe, new_name: renamed } });
+    const text = r.content[0].text;
+    if (r.isError || !text.includes('Renamed')) throw new Error(text);
+    return text;
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  await test(`recipes → get after rename — new name resolves with same id + note, old name is gone`, async () => {
+    const text = await getRecipeText(renamed);
+    if (recipeField(text, 'ID') !== testRecipeId) throw new Error(`identifier changed on rename: ${recipeField(text, 'ID')} != ${testRecipeId}`);
+    if (!text.includes('Updated by integration test')) throw new Error('note lost on rename');
+    const old = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: testRecipe } });
+    if (!old.isError) throw new Error('old name still resolves after rename');
+    return `renamed in place, id ${testRecipeId} stable`;
+  });
+
+  await test(`recipes → case-only rename keeps the new casing`, async () => {
+    const recased = `${testRecipe} Renamed`;
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: renamed, new_name: recased } });
+    if (r.isError) throw new Error(r.content[0].text);
+    await new Promise(res => setTimeout(res, 2000));
+    const text = await getRecipeText(recased);
+    if (!text.startsWith(`# ${recased}\n`)) throw new Error(`expected title "${recased}", got: ${text.split('\n')[0]}`);
+    return `casing changed to "${recased}"`;
+  });
+
+  const otherRecipe = `${testRecipe} other`;
+  await test(`recipes → rename onto an existing recipe's name is refused`, async () => {
+    const created = await client.callTool({ name: 'recipes', arguments: { action: 'create', name: otherRecipe } });
+    if (created.isError) throw new Error(created.content[0].text);
+    await new Promise(res => setTimeout(res, 2000));
+    try {
+      const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: `${testRecipe} Renamed`, new_name: otherRecipe } });
+      const text = r.content[0].text;
+      if (!r.isError || !text.includes('already exists')) throw new Error(`expected a clash error, got: ${text}`);
+      return 'clash rejected';
+    } finally {
+      await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: otherRecipe } });
+    }
+  });
+
+  await test(`recipes → rename back to "${testRecipe}"`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: `${testRecipe} Renamed`, new_name: testRecipe } });
+    if (r.isError) throw new Error(r.content[0].text);
+    await new Promise(res => setTimeout(res, 2000));
+    if (recipeField(await getRecipeText(testRecipe), 'ID') !== testRecipeId) throw new Error('identifier changed after renaming back');
+    return 'renamed back, id stable';
+  });
+
   await test(`recipes → delete ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: testRecipe } });
     const text = r.content[0].text;
