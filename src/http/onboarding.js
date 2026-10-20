@@ -36,21 +36,10 @@ router.post("/setup", async (req, res) => {
     defaultListName: default_list || null,
   });
 
-  try {
-    if (default_list) {
-      await testClient.connect(default_list);
-    } else {
-      // Connect without a specific list just to verify credentials
-      await testClient.connect(null).catch(() => {
-        // If no default list, just try authenticating by checking lists
-      });
-    }
-  } catch (err) {
-    // If connection fails due to missing list, try to at least verify auth
-    if (!err.message.includes("not found") && !err.message.includes("No list name")) {
-      req.session.setupError = `Could not connect to AnyList: ${err.message}`;
-      return res.redirect("/setup");
-    }
+  const verifyError = await verifyCredentials(testClient, default_list);
+  if (verifyError) {
+    req.session.setupError = verifyError;
+    return res.redirect("/setup");
   }
 
   upsertAnyListCredentials(req.session.userId, {
@@ -68,5 +57,21 @@ router.post("/setup", async (req, res) => {
   }
   res.redirect("/setup?saved=1");
 });
+
+/**
+ * Log in to AnyList with the submitted credentials (always), then check the
+ * default list if one was given. A default list that doesn't exist is allowed
+ * once login has succeeded. Returns an error message, or null on success.
+ */
+export async function verifyCredentials(client, defaultList) {
+  try {
+    await client.login();
+    if (defaultList) await client.connect(defaultList);
+    return null;
+  } catch (err) {
+    if (client.client && err.message.includes("not found")) return null;
+    return `Could not connect to AnyList: ${err.message}`;
+  }
+}
 
 export default router;

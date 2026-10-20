@@ -40,17 +40,7 @@ class AnyListClient {
     try {
       // Create AnyList client if not already authenticated
       if (!this.client) {
-        this.client = new AnyList({
-          email: username,
-          password: password
-        });
-
-        // Authenticate
-        console.error(`Connecting to AnyList as ${username}...`);
-        await this.client.login();
-        console.error('Successfully authenticated with AnyList');
-
-        await this.client.getLists();
+        await this._authenticate(username, password);
       }
 
       // Find the target list
@@ -72,6 +62,44 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
+  }
+
+  /**
+   * Authenticate without selecting a list, e.g. to verify credentials.
+   * Throws "Failed to connect to AnyList: ..." on bad credentials.
+   */
+  async login() {
+    const username = this._username || process.env.ANYLIST_USERNAME;
+    const password = this._password || process.env.ANYLIST_PASSWORD;
+
+    if (!username || !password) {
+      throw new Error('Missing AnyList credentials. Provide username and password.');
+    }
+    if (this.client) return true;
+
+    try {
+      await this._authenticate(username, password);
+      return true;
+    } catch (error) {
+      const wrappedError = new Error(`Failed to connect to AnyList: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  async _authenticate(username, password) {
+    const client = new AnyList({
+      email: username,
+      password: password
+    });
+
+    // Authenticate
+    console.error(`Connecting to AnyList as ${username}...`);
+    await client.login();
+    console.error('Successfully authenticated with AnyList');
+
+    await client.getLists();
+    this.client = client;
   }
 
   getAvailableListNames() {
