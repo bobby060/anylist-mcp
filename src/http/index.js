@@ -18,6 +18,7 @@ import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
 import onboardingRouter from "./onboarding.js";
 import { registerAllTools } from "../tools/index.js";
 import { isGoogleEnabled } from "./auth/providers/google.js";
+import { requireAllowedIp, requireSetupOpen, isSetupOpen } from "./access.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -52,6 +53,16 @@ app.use(express.urlencoded({ extended: false }));
 // original HTTPS connection. This also makes session cookies work correctly
 // when accessed through the tunnel.
 app.set("trust proxy", 1);
+
+// Source IP allowlist (ALLOWED_IPS) — evaluated before anything else.
+app.use(requireAllowedIp);
+
+// Browser-facing setup pages are 404 unless SETUP_OPEN=true. The oauth router is
+// also mounted under /mcp, so gate those aliases too.
+app.use([
+  "/login", "/auth", "/setup", "/oauth/authorize", "/authorize", "/oauth/consent",
+  "/mcp/auth", "/mcp/oauth/authorize", "/mcp/authorize", "/mcp/oauth/consent",
+], requireSetupOpen);
 
 app.use(session({
   secret: process.env.SESSION_SECRET,
@@ -245,4 +256,6 @@ app.listen(PORT, () => {
   console.log(`anylist-mcp HTTP server listening on port ${PORT}`);
   console.log(`Base URL: ${process.env.BASE_URL || "(derived from request host)"}`);
   console.log(`Google OAuth: ${isGoogleEnabled() ? "enabled" : "disabled (set GOOGLE_CLIENT_ID to enable)"}`);
+  console.log(`Setup pages: ${isSetupOpen() ? "OPEN (set SETUP_OPEN=false when done)" : "closed"}`);
+  console.log(`Allowed IPs: ${process.env.ALLOWED_IPS || "(any)"}`);
 });

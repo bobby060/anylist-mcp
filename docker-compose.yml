@@ -11,6 +11,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ANYLIST_SESSION_IDLE_MINUTES: ${ANYLIST_SESSION_IDLE_MINUTES:-30}
+      SETUP_OPEN: ${SETUP_OPEN:-false}
+      ALLOWED_IPS: ${ALLOWED_IPS:-}
       ALLOWED_EMAILS_FILE: /config/allowed-emails.txt
       NODE_ENV: production
     volumes:
