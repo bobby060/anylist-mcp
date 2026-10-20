@@ -3,7 +3,9 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
+      # Bound to localhost: only a tunnel on this host (Tailscale Funnel,
+      # cloudflared) can reach it, not other devices on the LAN.
+      - "127.0.0.1:${PORT:-3000}:3000"
     environment:
       BASE_URL: ${BASE_URL:-}
       SERVER_SECRET_KEY: ${SERVER_SECRET_KEY}
@@ -11,6 +13,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ANYLIST_SESSION_IDLE_MINUTES: ${ANYLIST_SESSION_IDLE_MINUTES:-30}
+      ALLOWED_REDIRECT_HOSTS: ${ALLOWED_REDIRECT_HOSTS:-claude.ai,claude.com,localhost,127.0.0.1}
       ALLOWED_EMAILS_FILE: /config/allowed-emails.txt
       NODE_ENV: production
     volumes:

@@ -15,6 +15,7 @@ import {
 } from "../db.js";
 import { loginWithPassword, registerWithPassword } from "./providers/password.js";
 import { loginWithGoogle, isGoogleEnabled } from "./providers/google.js";
+import { isRedirectUriAllowed } from "../security.js";
 
 function renderLogin(res, error = "") {
   res.render("login", {
@@ -91,6 +92,10 @@ router.get(["/oauth/authorize", "/authorize"], (req, res) => {
 
   if (!client_id) {
     return res.status(400).send("Missing required parameter: client_id");
+  }
+  if (!isRedirectUriAllowed(redirect_uri)) {
+    console.log(`[oauth] ANOMALOUS authorize with disallowed redirect_uri=${redirect_uri} ip=${req.ip}`);
+    return res.status(400).send("redirect_uri is not allowed. Add its host to ALLOWED_REDIRECT_HOSTS.");
   }
 
   // Confidential clients (those with a client_secret) don't use PKCE

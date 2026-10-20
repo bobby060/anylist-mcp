@@ -22,13 +22,16 @@ RUN test -f anylist-js/lib/index.js || \
 COPY package.json ./
 
 # Persistent data directory (SQLite DB) and config directory (allowed-emails.txt)
-RUN mkdir -p /data /config
+RUN mkdir -p /data /config && chown node:node /data
 VOLUME /data
 ENV DATA_DIR=/data
 ENV NODE_ENV=production
 ENV PORT=3000
 
 EXPOSE 3000
+
+# Run as the unprivileged user that ships with the node image
+USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1

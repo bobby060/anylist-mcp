@@ -6,6 +6,7 @@ This guide connects the anylist-mcp HTTP server to Home Assistant as an MCP tool
 
 - The anylist-mcp HTTP server is running and reachable over HTTPS (see [cloudflare-setup.md](cloudflare-setup.md))
 - You have an account on the server (registered via the web UI)
+- `ALLOWED_REDIRECT_HOSTS` in `.env` includes `my.home-assistant.io` (e.g. `ALLOWED_REDIRECT_HOSTS=claude.ai,claude.com,localhost,127.0.0.1,my.home-assistant.io`)
 - Home Assistant 2025.2 or later (when MCP client support was added)
 
 ---

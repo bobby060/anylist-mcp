@@ -66,6 +66,12 @@ app.use(session({
   },
 }));
 
+// Disallow framing: the consent page's Approve button must not be clickjackable.
+app.use((_req, res, next) => {
+  res.setHeader("X-Frame-Options", "DENY");
+  next();
+});
+
 // ── Request logging ───────────────────────────────────────────────────────────
 
 app.use((req, res, next) => {
