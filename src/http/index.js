@@ -17,6 +17,7 @@ import { getOrCreateSession } from "./session-manager.js";
 import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
 import onboardingRouter from "./onboarding.js";
 import { registerAllTools } from "../tools/index.js";
+import { createSessionStore } from "./mcp-sessions.js";
 import { isGoogleEnabled } from "./auth/providers/google.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -140,7 +141,7 @@ app.use(onboardingRouter);
 // session, keyed by the Mcp-Session-Id header. This is required for elicitation
 // to work (the server needs to maintain request context across the session).
 
-const mcpSessions = new Map(); // sessionId → { server, transport }
+const mcpSessions = createSessionStore(); // sessionId → { server, transport, userId }, owned per user
 
 function createMcpServer(userId) {
   const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.9.0" });
@@ -156,7 +157,7 @@ async function handleMcp(req, res) {
     // Initialize requests always create a new session — never route to an existing one.
     // This handles clients (e.g. HA) that send a second initialize on a stale session ID.
     const mcpSession = !isInitializeRequest(req.body) && sessionId
-      ? mcpSessions.get(sessionId)
+      ? mcpSessions.get(sessionId, req.userId)
       : null;
 
     if (!mcpSession) {
@@ -171,7 +172,7 @@ async function handleMcp(req, res) {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomBytes(16).toString("hex"),
         onsessioninitialized: (sid) => {
-          mcpSessions.set(sid, { server: mcpServer, transport });
+          mcpSessions.set(sid, { server: mcpServer, transport, userId });
         },
       });
 
@@ -205,7 +206,7 @@ function makeSseConnectHandler(postEndpoint) {
       const transport = new SSEServerTransport(postEndpoint, res);
       const sessionId = transport.sessionId;
       const mcpServer = createMcpServer(req.userId);
-      mcpSessions.set(sessionId, { server: mcpServer, transport });
+      mcpSessions.set(sessionId, { server: mcpServer, transport, userId: req.userId });
       transport.onclose = () => { mcpSessions.delete(sessionId); };
       await mcpServer.connect(transport); // connect() calls transport.start() internally
     } catch (err) {
@@ -217,7 +218,7 @@ function makeSseConnectHandler(postEndpoint) {
 
 async function handleSseMessage(req, res) {
   try {
-    const mcpSession = req.query.sessionId ? mcpSessions.get(req.query.sessionId) : null;
+    const mcpSession = req.query.sessionId ? mcpSessions.get(req.query.sessionId, req.userId) : null;
     if (!mcpSession || !(mcpSession.transport instanceof SSEServerTransport)) {
       return res.status(404).json({ error: "SSE session not found." });
     }
