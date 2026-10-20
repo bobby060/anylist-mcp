@@ -46,9 +46,11 @@ describe("requireAllowedIp", () => {
     assert.deepEqual(run(requireAllowedIp, { ip: "8.8.8.8" }), { nextCalled: false, status: 403 });
   });
 
-  it("always lets /health through", () => {
+  it("always allows loopback (the container's own healthcheck)", () => {
     process.env.ALLOWED_IPS = "160.79.104.0/21";
-    assert.deepEqual(run(requireAllowedIp, { ip: "127.0.0.1", path: "/health" }), { nextCalled: true, status: undefined });
+    assert.deepEqual(run(requireAllowedIp, { ip: "::ffff:127.0.0.1", path: "/health" }), { nextCalled: true, status: undefined });
+    assert.deepEqual(run(requireAllowedIp, { ip: "::1", path: "/health" }), { nextCalled: true, status: undefined });
+    assert.deepEqual(run(requireAllowedIp, { ip: "8.8.8.8", path: "/health" }), { nextCalled: false, status: 403 });
   });
 });
 

@@ -1,10 +1,13 @@
 import { BlockList, isIP } from "net";
 
 // ── Source IP allowlist ───────────────────────────────────────────────────────
-// ALLOWED_IPS: comma-separated IPs/CIDRs. When set, every request except
-// /health must come from one of them. For a Claude connector that means
-// Anthropic's outbound range plus wherever you do the one-time browser setup.
+// ALLOWED_IPS: comma-separated IPs/CIDRs. When set, every request must come
+// from one of them. For a Claude connector that means Anthropic's outbound
+// range plus wherever you do the one-time browser setup. Loopback is always
+// allowed so the container's own Docker healthcheck keeps working; a tunnel
+// overwrites X-Forwarded-For, so external clients can't present it.
 
+const LOOPBACK = new Set(["127.0.0.1", "::1"]);
 let _cache = { raw: undefined, list: null };
 
 function allowedList() {
@@ -27,11 +30,12 @@ export function isIpAllowed(ip) {
   if (!list) return true;
   if (!ip) return false;
   const addr = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+  if (LOOPBACK.has(addr)) return true;
   return list.check(addr, isIP(addr) === 6 ? "ipv6" : "ipv4");
 }
 
 export function requireAllowedIp(req, res, next) {
-  if (req.path === "/health" || isIpAllowed(req.ip)) return next();
+  if (isIpAllowed(req.ip)) return next();
   console.log(`[access] blocked ${req.method} ${req.path} from ip=${req.ip}`);
   res.status(403).json({ error: "forbidden" });
 }
