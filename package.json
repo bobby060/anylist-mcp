@@ -26,13 +26,18 @@
   "dependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "anylist": "^0.8.5",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.8.0",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "google-auth-library": "^10.6.2"
+    "form-data": "^3.0.0",
+    "google-auth-library": "^10.6.2",
+    "got": "^11.8.6",
+    "protobufjs": "5.0.3",
+    "reconnecting-websocket": "^4.2.0",
+    "uuid": "^3.4.0",
+    "ws": "^7.2.1"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^7.0.0",

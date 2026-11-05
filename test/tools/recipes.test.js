@@ -56,6 +56,22 @@ describe('recipes tool', () => {
       assert.equal(result.isError, true);
       assert.ok(result.content[0].text.includes('not found'));
     });
+
+    it('shows the photo URL when the recipe has one', async () => {
+      client._recipes.push({
+        identifier: 'r-photo',
+        name: 'Pasta',
+        photoUrls: ['https://photos.anylist.com/abc123.jpg'],
+      });
+      const result = await handlers.recipes({ action: 'get', name: 'Pasta' });
+      assert.ok(result.content[0].text.includes('Photo: https://photos.anylist.com/abc123.jpg'));
+    });
+
+    it('omits the photo line when the recipe has none', async () => {
+      client._recipes.push({ identifier: 'r-nophoto', name: 'Pasta', photoUrls: [] });
+      const result = await handlers.recipes({ action: 'get', name: 'Pasta' });
+      assert.ok(!result.content[0].text.includes('Photo:'));
+    });
   });
 
   describe('create', () => {
@@ -77,6 +93,15 @@ describe('recipes tool', () => {
         servings: '4',
       });
       assert.equal(client._recipes[0].name, 'Full Recipe');
+    });
+
+    it('passes photo_url through as photoUrl', async () => {
+      await handlers.recipes({
+        action: 'create',
+        name: 'With Photo',
+        photo_url: 'https://example.com/dinner.jpg',
+      });
+      assert.equal(client._recipes[0].photoUrl, 'https://example.com/dinner.jpg');
     });
 
     it('stores prep/cook times in seconds', async () => {
@@ -175,6 +200,18 @@ describe('recipes tool', () => {
       assert.equal(r.servings, '4');
       assert.equal(r.rating, 5);
       assert.deepEqual(r.preparationSteps, ['Boil']);
+    });
+
+    it('accepts photo_url on its own as a patch', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta', note: 'keep me' });
+      const result = await handlers.recipes({
+        action: 'update',
+        name: 'Pasta',
+        photo_url: 'https://example.com/dinner.jpg',
+      });
+      assert.ok(result.content[0].text.includes('Updated recipe "Pasta"'));
+      assert.equal(client._recipes[0].photoUrl, 'https://example.com/dinner.jpg');
+      assert.equal(client._recipes[0].note, 'keep me');
     });
 
     it('replaces the entire ingredient list when ingredients are provided', async () => {

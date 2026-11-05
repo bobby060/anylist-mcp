@@ -124,6 +124,11 @@ Manage AnyList recipes, including URL import and text parsing.
 // Rename a recipe in place (fails if another recipe already has the new name)
 { "name": "recipes", "arguments": { "action": "update", "name": "Simple Pasta", "new_name": "Garlic Pasta" } }
 
+// Give a recipe a photo, on create or on update. The image is downloaded from
+// photo_url and uploaded to AnyList; on update it replaces any existing photo.
+// `get` reports the stored photo as a URL.
+{ "name": "recipes", "arguments": { "action": "update", "name": "Simple Pasta", "photo_url": "https://example.com/pasta.jpg" } }
+
 // Delete a recipe
 { "name": "recipes", "arguments": { "action": "delete", "name": "Simple Pasta" } }
 

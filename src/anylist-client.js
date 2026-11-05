@@ -1,6 +1,53 @@
 import AnyList from '../anylist-js/lib/index.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+
+// Uploaded photos are served from here, keyed by photo ID. Public: no auth.
+const PHOTO_URL_BASE = 'https://photos.anylist.com';
+
+/**
+ * Download an image to attach to a recipe.
+ *
+ * Capped at PHOTO_MAX_BYTES so a wrong URL pointing at something huge fails here
+ * rather than being buffered in full. AnyList re-encodes whatever it is sent, so
+ * there is no need to resize first.
+ *
+ * @param {string} url - http(s) URL of the image
+ * @returns {Promise<Buffer>} the image bytes
+ */
+async function fetchPhoto(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid photo URL: ${url}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Photo URL must be http or https, got "${parsed.protocol}"`);
+  }
+
+  const response = await fetch(url, { redirect: 'follow' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching photo ${url}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`Photo URL returned "${contentType || 'no content type'}", expected an image`);
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error(`Photo URL returned an empty response: ${url}`);
+  }
+  if (bytes.length > PHOTO_MAX_BYTES) {
+    throw new Error(`Photo is ${bytes.length} bytes, over the ${PHOTO_MAX_BYTES} byte limit`);
+  }
+
+  return bytes;
+}
+
 class AnyListClient {
   /**
    * @param {{ username?: string, password?: string, defaultListName?: string }} [credentials]
@@ -434,6 +481,7 @@ class AnyListClient {
           note: i.note || null,
         })) : [],
         preparationSteps: recipe.preparationSteps || [],
+        photoUrls: (recipe.photoIds || []).map(id => `${PHOTO_URL_BASE}/${id}.jpg`),
       };
     } catch (error) {
       throw new Error(`Failed to get recipe details: ${error.message}`);
@@ -519,7 +567,7 @@ class AnyListClient {
     }
   }
 
-  async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null }) {
+  async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null, photoUrl = null }) {
     if (!this.client) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -540,6 +588,9 @@ class AnyListClient {
           quantity: typeof i === 'string' ? null : i.quantity || null,
           note: typeof i === 'string' ? null : i.note || null,
         }));
+      }
+      if (photoUrl) {
+        recipeObj.photoIds = [await this.client.uploadPhoto(await fetchPhoto(photoUrl))];
       }
       const recipe = await this.client.createRecipe(recipeObj);
       await recipe.save();
@@ -565,8 +616,9 @@ class AnyListClient {
    *
    * @param {string} recipeName - name identifying the recipe to update
    * @param {object} fields - subset of { name, note, sourceName, sourceUrl,
-   *   prepTime, cookTime, servings, ingredients, preparationSteps }; keys with an
-   *   `undefined` value are ignored. `name` renames the recipe in place.
+   *   prepTime, cookTime, servings, ingredients, preparationSteps, photoUrl }; keys
+   *   with an `undefined` value are ignored. `name` renames the recipe in place.
+   *   `photoUrl` downloads that image and replaces the recipe's photo.
    */
   async updateRecipe(recipeName, fields = {}) {
     if (!this.client) {
@@ -611,6 +663,9 @@ class AnyListClient {
 
       for (const key of ['name', 'note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps']) {
         if (fields[key] !== undefined) merged[key] = fields[key];
+      }
+      if (fields.photoUrl !== undefined) {
+        merged.photoIds = [await this.client.uploadPhoto(await fetchPhoto(fields.photoUrl))];
       }
       if (fields.ingredients !== undefined) {
         merged.ingredients = fields.ingredients.map(i => ({

@@ -35,12 +35,13 @@ export function register(server, getClient) {
       prep_time: z.number().optional().describe("Prep time in minutes (create, update)"),
       cook_time: z.number().optional().describe("Cook time in minutes (create, update)"),
       servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create, update)"),
+      photo_url: z.string().optional().describe("URL of an image to use as the recipe photo (create, update). Downloaded and uploaded to AnyList; on update it replaces the existing photo."),
       url: z.string().optional().describe("URL to import recipe from (import_url, normalize)"),
       text: z.string().optional().describe("Raw recipe text to parse (normalize only)"),
       save: z.boolean().optional().describe("If true, also save normalized recipe to AnyList (normalize only, default false)"),
     }
   }, async (params) => {
-    const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
+    const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, photo_url, url, text: recipeText, save: saveRecipe } = params;
     try {
       const client = await getClient();
       await client.connect(null);
@@ -71,6 +72,7 @@ export function register(server, getClient) {
           if (recipe.cookTime) text += `Cook: ${toMinutes(recipe.cookTime)} min\n`;
           if (recipe.servings) text += `Servings: ${recipe.servings}\n`;
           if (recipe.createdAt) text += `Created: ${recipe.createdAt}\n`;
+          if (recipe.photoUrls?.length > 0) text += `Photo: ${recipe.photoUrls.join(', ')}\n`;
           if (recipe.note) text += `\nNotes: ${recipe.note}\n`;
           if (recipe.ingredients.length > 0) {
             text += `\n## Ingredients\n`;
@@ -108,6 +110,7 @@ export function register(server, getClient) {
             prepTime: prep_time ? toSeconds(prep_time) : null,
             cookTime: cook_time ? toSeconds(cook_time) : null,
             servings: servings || null,
+            photoUrl: photo_url || null,
           });
           return textResponse(`Created recipe "${result.name}"`);
         }
@@ -135,8 +138,9 @@ export function register(server, getClient) {
           if (prep_time !== undefined) fields.prepTime = toSeconds(prep_time);
           if (cook_time !== undefined) fields.cookTime = toSeconds(cook_time);
           if (servings !== undefined) fields.servings = servings;
+          if (photo_url !== undefined) fields.photoUrl = photo_url;
           if (Object.keys(fields).length === 0) {
-            return errorResponse('Action "update" requires at least one field to change (new_name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, or servings).');
+            return errorResponse('Action "update" requires at least one field to change (new_name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, or photo_url).');
           }
           const updated = await client.updateRecipe(updateRecipeName, fields);
           if (fields.name !== undefined) return textResponse(`Renamed recipe "${updateRecipeName}" to "${updated.name}"`);
