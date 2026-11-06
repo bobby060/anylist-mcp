@@ -1,5 +1,11 @@
+import { createRequire } from 'node:module';
 import AnyList from '../anylist-js/lib/index.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
+
+// Load the helpers the anylist-js library uses, resolved the same way it resolves them.
+const requireFromAnyList = createRequire(new URL('../anylist-js/lib/index.js', import.meta.url));
+const FormData = requireFromAnyList('form-data');
+const uuid = requireFromAnyList('./uuid');
 
 class AnyListClient {
   /**
@@ -807,6 +813,84 @@ class AnyListClient {
     } catch (error) {
       throw new Error(`Failed to create recipe collection: ${error.message}`);
     }
+  }
+
+  /**
+   * Add recipes to, or remove them from, an existing collection.
+   *
+   * AnyList's web app sends one operation per recipe, with the collection's
+   * recipeIds narrowed to that recipe. The server adds or removes exactly the
+   * IDs it receives, so sending the full list on a remove would remove every
+   * recipe in the collection. The anylist library's RecipeCollection.addRecipe
+   * and removeRecipe send the full list, so they are not used here.
+   *
+   * @param {'add'|'remove'} mode
+   * @param {string} collectionName
+   * @param {string[]} recipeNames
+   * @returns {Promise<{name: string, changed: string[], unchanged: string[], notFound: string[]}>}
+   *   changed: recipes added (or removed); unchanged: already in (or not in) the collection
+   */
+  async _changeRecipeCollection(mode, collectionName, recipeNames) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    const verb = mode === 'add' ? 'add recipes to' : 'remove recipes from';
+    try {
+      const userData = await this.client._getUserData(true);
+      const recipeData = userData.recipeDataResponse;
+      const raw = (recipeData.recipeCollections || []).find(c => c.name && c.name.toLowerCase() === collectionName.toLowerCase());
+      if (!raw) throw new Error(`Recipe collection "${collectionName}" not found`);
+
+      const inCollection = new Set(raw.recipeIds || []);
+      const recipes = recipeData.recipes || [];
+      const changed = [];
+      const unchanged = [];
+      const notFound = [];
+      const ids = [];
+      for (const rName of recipeNames) {
+        const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
+        if (!r) { notFound.push(rName); continue; }
+        const isIn = inCollection.has(r.identifier);
+        if ((mode === 'add') === isIn || ids.includes(r.identifier)) { unchanged.push(r.name); continue; }
+        ids.push(r.identifier);
+        changed.push(r.name);
+      }
+
+      if (ids.length > 0) {
+        const pb = this.client.protobuf;
+        const handlerId = mode === 'add' ? 'add-recipes-to-collection' : 'remove-recipes-from-collection';
+        const operations = ids.map(id => {
+          const op = new pb.PBRecipeOperation();
+          op.setMetadata({ operationId: uuid(), handlerId, userId: this.client.uid });
+          op.setRecipeDataId(recipeData.recipeDataId);
+          op.setRecipeCollection(new pb.PBRecipeCollection({
+            identifier: raw.identifier,
+            timestamp: raw.timestamp,
+            name: raw.name,
+            recipeIds: [id],
+            collectionSettings: raw.collectionSettings,
+          }));
+          return op;
+        });
+        const ops = new pb.PBRecipeOperationList();
+        ops.setOperations(operations);
+        const form = new FormData();
+        form.append('operations', ops.toBuffer());
+        await this.client.client.post('data/user-recipe-data/update', { body: form });
+        console.error(`${mode === 'add' ? 'Added' : 'Removed'} ${ids.length} recipe(s) ${mode === 'add' ? 'to' : 'from'} collection: ${raw.name}`);
+      }
+      return { name: raw.name, changed, unchanged, notFound };
+    } catch (error) {
+      throw new Error(`Failed to ${verb} collection: ${error.message}`);
+    }
+  }
+
+  async addRecipesToCollection(collectionName, recipeNames) {
+    return this._changeRecipeCollection('add', collectionName, recipeNames);
+  }
+
+  async removeRecipesFromCollection(collectionName, recipeNames) {
+    return this._changeRecipeCollection('remove', collectionName, recipeNames);
   }
 
   async deleteRecipeCollection(name) {

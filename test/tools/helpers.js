@@ -188,6 +188,27 @@ export class MockAnyListClient {
     return c;
   }
 
+  async _changeRecipeCollection(adding, name, recipeNames) {
+    const c = this._collections.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!c) throw new Error(`Recipe collection "${name}" not found`);
+    const changed = [], unchanged = [], notFound = [];
+    for (const rName of recipeNames) {
+      const r = this._recipes.find(r => r.name.toLowerCase() === rName.toLowerCase());
+      if (!r) { notFound.push(rName); continue; }
+      const isIn = c.recipeNames.includes(r.name);
+      if (adding === isIn) { unchanged.push(r.name); continue; }
+      if (adding) c.recipeNames.push(r.name);
+      else c.recipeNames.splice(c.recipeNames.indexOf(r.name), 1);
+      changed.push(r.name);
+    }
+    c.recipeCount = c.recipeNames.length;
+    return { name: c.name, changed, unchanged, notFound };
+  }
+
+  async addRecipesToCollection(name, recipeNames) { return this._changeRecipeCollection(true, name, recipeNames); }
+
+  async removeRecipesFromCollection(name, recipeNames) { return this._changeRecipeCollection(false, name, recipeNames); }
+
   async deleteRecipeCollection(name) {
     const idx = this._collections.findIndex(c => c.name.toLowerCase() === name.toLowerCase());
     if (idx === -1) throw new Error(`Recipe collection "${name}" not found`);
