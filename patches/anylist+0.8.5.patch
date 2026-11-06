@@ -1,0 +1,42 @@
+diff --git a/node_modules/anylist/lib/ingredient.js b/node_modules/anylist/lib/ingredient.js
+index a6c9b75..938bb1d 100644
+--- a/node_modules/anylist/lib/ingredient.js
++++ b/node_modules/anylist/lib/ingredient.js
+@@ -19,6 +19,8 @@ class Ingredient {
+ 		this._name = i.name;
+ 		this._quantity = i.quantity;
+ 		this._note = i.note;
++		this._identifier = i.identifier;
++		this._isHeading = i.isHeading;
+ 		this._client = client;
+ 		this._protobuf = protobuf;
+ 		this._uid = uid;
+@@ -32,6 +34,8 @@ class Ingredient {
+ 			name: this._name,
+ 			quantity: this._quantity,
+ 			note: this._note,
++			identifier: this._identifier,
++			isHeading: this._isHeading,
+ 		};
+ 	}
+ 
+@@ -41,6 +45,8 @@ class Ingredient {
+ 			quantity: this._quantity,
+ 			rawIngredient: this._rawIngredient,
+ 			note: this._note,
++			identifier: this._identifier,
++			isHeading: this._isHeading,
+ 		});
+ 	}
+ 
+@@ -71,6 +77,10 @@ class Ingredient {
+ 		this._fieldsToUpdate.push('quantity');
+ 	}
+ 
++	get isHeading() {
++		return this._isHeading;
++	}
++
+ 	get note() {
+ 		return this._note;
+ 	}

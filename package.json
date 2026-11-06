@@ -13,7 +13,8 @@
     "start:http": "node src/http/index.js",
     "dev:http": "node --watch src/http/index.js",
     "test": "node --test test/*.test.js test/tools/*.test.js",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "postinstall": "patch-package"
   },
   "keywords": [
     "mcp",
@@ -38,6 +39,7 @@
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
+    "patch-package": "^8.0.1",
     "semantic-release": "^25.0.9"
   }
 }

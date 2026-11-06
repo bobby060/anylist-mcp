@@ -432,7 +432,10 @@ class AnyListClient {
           name: i.name || null,
           quantity: i.quantity || null,
           note: i.note || null,
+          isHeading: Boolean(i.isHeading),
         })) : [],
+        photoUrls: recipe.photoUrls || [],
+        photoIds: recipe.photoIds || [],
         preparationSteps: recipe.preparationSteps || [],
       };
     } catch (error) {
@@ -465,6 +468,8 @@ class AnyListClient {
           rating: decoded.recipe.rating || null,
           ingredients: decoded.recipe.ingredients || [],
           preparationSteps: decoded.recipe.preparationSteps || [],
+          photoIds: decoded.recipe.photoIds || [],
+          photoUrls: decoded.recipe.photoUrls || [],
         });
         recipe.isNewRecipeFromWebImport = true;
         recipe.creationTimestamp = Date.now() / 1000;
@@ -519,7 +524,7 @@ class AnyListClient {
     }
   }
 
-  async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null }) {
+  async createRecipe({ name, ingredients = [], preparationSteps = [], note = null, sourceName = null, sourceUrl = null, prepTime = null, cookTime = null, servings = null, photoUrls = [], nutritionalInfo = null }) {
     if (!this.client) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -532,6 +537,8 @@ class AnyListClient {
       if (prepTime) recipeObj.prepTime = prepTime;
       if (cookTime) recipeObj.cookTime = cookTime;
       if (servings) recipeObj.servings = servings;
+      if (photoUrls.length > 0) recipeObj.photoUrls = photoUrls;
+      if (nutritionalInfo) recipeObj.nutritionalInfo = nutritionalInfo;
       if (preparationSteps.length > 0) recipeObj.preparationSteps = preparationSteps;
       if (ingredients.length > 0) {
         recipeObj.ingredients = ingredients.map(i => ({
@@ -539,6 +546,7 @@ class AnyListClient {
           name: typeof i === 'string' ? i : (i.name || i.rawIngredient || null),
           quantity: typeof i === 'string' ? null : i.quantity || null,
           note: typeof i === 'string' ? null : i.note || null,
+          isHeading: typeof i === 'string' ? false : Boolean(i.isHeading),
         }));
       }
       const recipe = await this.client.createRecipe(recipeObj);
@@ -609,7 +617,7 @@ class AnyListClient {
         ingredients: existing.ingredients.map(i => i.toJSON()),
       };
 
-      for (const key of ['name', 'note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps']) {
+      for (const key of ['name', 'note', 'sourceName', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'preparationSteps', 'photoUrls', 'nutritionalInfo']) {
         if (fields[key] !== undefined) merged[key] = fields[key];
       }
       if (fields.ingredients !== undefined) {
@@ -618,6 +626,7 @@ class AnyListClient {
           name: typeof i === 'string' ? i : (i.name || i.rawIngredient || null),
           quantity: typeof i === 'string' ? null : i.quantity || null,
           note: typeof i === 'string' ? null : i.note || null,
+          isHeading: typeof i === 'string' ? false : Boolean(i.isHeading),
         }));
       }
 
