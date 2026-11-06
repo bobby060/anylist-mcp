@@ -33,13 +33,13 @@
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "google-auth-library": "^10.6.2"
+    "google-auth-library": "^10.6.2",
+    "patch-package": "^8.0.1"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
-    "patch-package": "^8.0.1",
     "semantic-release": "^25.0.9"
   }
 }
