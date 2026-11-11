@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Integration test — spawns the MCP server and sends real tool calls via stdio
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import AnyListClient from '../src/anylist-client.js';
+
+dotenv.config();
 
 const transport = new StdioClientTransport({
   command: process.execPath,
