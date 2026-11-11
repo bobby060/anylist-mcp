@@ -379,7 +379,9 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      // User-facing read — force a real fetch so changes made outside this
+      // server process (the AnyList app, another session) are reflected.
+      const recipes = await this.client.getRecipes(true);
       let results = recipes.map(r => ({
         identifier: r.identifier,
         name: r.name,
@@ -408,7 +410,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      // User-facing read — force a real fetch, same reasoning as getRecipes().
+      const recipes = await this.client.getRecipes(true);
       const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
@@ -654,7 +657,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const events = await this.client.getMealPlanningCalendarEvents();
+      // User-facing read — force a real fetch, same reasoning as getRecipes().
+      const events = await this.client.getMealPlanningCalendarEvents(true);
       return events.map(e => ({
         identifier: e.identifier,
         date: e.date instanceof Date ? e.date.toISOString().slice(0, 10) : String(e.date),
@@ -675,7 +679,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      await this.client.getMealPlanningCalendarEvents();
+      // User-facing read — force a real fetch, same reasoning as getRecipes().
+      await this.client.getMealPlanningCalendarEvents(true);
       return (this.client.mealPlanningCalendarEventLabels || []).map(l => ({
         identifier: l.identifier,
         name: l.name,
@@ -770,7 +775,13 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const collections = await this.client.getRecipeCollections();
+      // User-facing read — force a real fetch. Both getRecipeCollections()
+      // and getRecipes() draw from the same data/user-data/get response, so
+      // invalidate the recipe cache rather than force-fetching it a second
+      // time: it re-derives from the blob this call just fetched, for free,
+      // instead of a stale array left over from an earlier, unrelated call.
+      const collections = await this.client.getRecipeCollections(true);
+      this.client.recipes = null;
       const recipes = await this.client.getRecipes();
       return collections.map(c => ({
         identifier: c.identifier,
