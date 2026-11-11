@@ -770,8 +770,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const userData = await this.client._getUserData(true);
-      const collections = userData.recipeDataResponse.recipeCollections || [];
+      const collections = await this.client.getRecipeCollections();
       const recipes = await this.client.getRecipes();
       return collections.map(c => ({
         identifier: c.identifier,
@@ -800,7 +799,7 @@ class AnyListClient {
           if (r) recipeIds.push(r.identifier);
         }
       }
-      const collection = this.client.createRecipeCollection({ name, recipeIds });
+      const collection = await this.client.createRecipeCollection({ name, recipeIds });
       await collection.save();
       console.error(`Created recipe collection: ${name}`);
       return { identifier: collection.identifier, name: collection.name };
@@ -814,11 +813,9 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const userData = await this.client._getUserData(true);
-      const collections = userData.recipeDataResponse.recipeCollections || [];
-      const raw = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
-      if (!raw) throw new Error(`Recipe collection "${name}" not found`);
-      const collection = this.client.createRecipeCollection(raw);
+      const collections = await this.client.getRecipeCollections();
+      const collection = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+      if (!collection) throw new Error(`Recipe collection "${name}" not found`);
       await collection.delete();
       console.error(`Deleted recipe collection: ${name}`);
     } catch (error) {
