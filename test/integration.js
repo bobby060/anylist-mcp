@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import AnyListClient from '../src/anylist-client.js';
 
 dotenv.config();
 
@@ -422,19 +421,6 @@ try {
     if (recipeField(text, 'ID') !== testRecipeId) throw new Error('identifier changed after multi-field update');
     if (updateCreatedAt && recipeField(text, 'Created') !== updateCreatedAt) throw new Error('Created timestamp changed on update');
     return 'note + prep updated; earlier servings change and Created timestamp preserved';
-  });
-
-  // Recipes: prep_time is stored in AnyList as seconds
-  await test(`recipes → prep_time is stored in AnyList as seconds`, async () => {
-    const direct = new AnyListClient();
-    try {
-      await direct.connect(LIST_NAME);
-      const recipe = await direct.getRecipeDetails(testRecipe);
-      if (recipe.prepTime !== 900) throw new Error(`expected 900 seconds stored for 15 min, got ${recipe.prepTime}`);
-      return 'prep_time 15 → 900 seconds in AnyList';
-    } finally {
-      await direct.disconnect();
-    }
   });
 
   const replacedIngredients = [

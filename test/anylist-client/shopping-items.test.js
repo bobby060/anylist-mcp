@@ -2,7 +2,7 @@
  * Tests for item-level operations: addItem, removeItem, deleteItem, getItems
  */
 import AnyListClient from '../../src/anylist-client.js';
-import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
+import { makeRunner, printSuiteResults } from './helpers.js';
 
 const ITEM = '🧪 Test Item';
 const ITEM_QTY = '🧪 Test Item Qty';
@@ -10,11 +10,9 @@ const ITEM_NOTES = '🧪 Test Item Notes';
 const ITEM_CATEGORY = '🧪 Test Item Category';
 const ITEM_STORE = '🧪 Test Item Store';
 
-export async function runShoppingItemsTests() {
+export async function runShoppingItemsTests(client) {
   console.log('\n🛒 Shopping Items');
   const { test, results } = makeRunner();
-
-  const client = await createConnectedClient();
 
   // Pre-clean
   for (const name of [ITEM, ITEM_QTY, ITEM_NOTES, ITEM_CATEGORY, ITEM_STORE]) {
@@ -253,6 +251,5 @@ export async function runShoppingItemsTests() {
     try { await client.deleteItem(name); } catch {}
   }
 
-  await client.disconnect();
   return printSuiteResults('Shopping Items', results());
 }
