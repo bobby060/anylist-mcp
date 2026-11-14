@@ -49,6 +49,7 @@ router.get("/.well-known/oauth-authorization-server", (req, res) => {
     grant_types_supported: ["authorization_code", "refresh_token", "client_credentials"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+    scopes_supported: ["mcp"],
   });
 });
 
@@ -69,18 +70,21 @@ router.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protect
 // ── Dynamic Client Registration (RFC 7591) ────────────────────────────────────
 // Home ASsistent expects /register, but Claude expects /oauth/register, so we support both.
 router.post(["/oauth/register", "/register"], (req, res) => {
-  const { redirect_uris, client_name } = req.body || {};
+  const { redirect_uris, client_name, scope } = req.body || {};
   const clientId = randomUUID();
   const redirectUri = Array.isArray(redirect_uris) ? redirect_uris[0] : redirect_uris || null;
   registerOAuthClient({ clientId, redirectUri });
+  // Public client: omit client_secret entirely (RFC 7591 §3.2.1). A null value
+  // makes strict DCR clients such as ChatGPT reject the registration.
   res.status(201).json({
     client_id: clientId,
-    client_secret: null,
+    client_id_issued_at: Math.floor(Date.now() / 1000),
     redirect_uris: redirectUri ? [redirectUri] : [],
     client_name: client_name || "MCP Client",
     token_endpoint_auth_method: "none",
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
+    scope: scope || "mcp",
   });
 });
 
