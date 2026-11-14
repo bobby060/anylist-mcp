@@ -93,6 +93,9 @@ make dev
 # Watch logs for the trycloudflare.com URL, then add it as an MCP server in Claude Settings/Connectors
 ```
 
+**Allowed Hosts**
+Initial allowed redirect hosts for login are "claude.ai", "claude.com", "localhost", "127.0.0.1". To add more, edit [security.js](src/http/security.js) before running.
+
 ---
 
 ## Generating OAuth Client Credentials (for Home Assistant / headless clients)

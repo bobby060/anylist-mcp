@@ -24,9 +24,16 @@ describe("isRedirectUriAllowed", () => {
     assert.ok(!isRedirectUriAllowed(undefined));
   });
 
-  it("honours ALLOWED_REDIRECT_HOSTS", () => {
-    process.env.ALLOWED_REDIRECT_HOSTS = "my.home-assistant.io";
+  it("adds ALLOWED_REDIRECT_HOSTS on top of the defaults", () => {
+    process.env.ALLOWED_REDIRECT_HOSTS = " My.Home-Assistant.io , ";
     assert.ok(isRedirectUriAllowed("https://my.home-assistant.io/redirect/oauth"));
-    assert.ok(!isRedirectUriAllowed("https://claude.ai/api/mcp/auth_callback"));
+    assert.ok(isRedirectUriAllowed("https://claude.ai/api/mcp/auth_callback"));
+    assert.ok(!isRedirectUriAllowed("https://evil.example/cb"));
+  });
+
+  it("treats an empty ALLOWED_REDIRECT_HOSTS as just the defaults", () => {
+    process.env.ALLOWED_REDIRECT_HOSTS = "";
+    assert.ok(isRedirectUriAllowed("https://claude.ai/api/mcp/auth_callback"));
+    assert.ok(!isRedirectUriAllowed("https://evil.example/cb"));
   });
 });
