@@ -94,7 +94,7 @@ make dev
 ```
 
 **Allowed Hosts**
-Initial allowed redirect hosts for login are "claude.ai", "claude.com", "localhost", "127.0.0.1". To add more, edit [security.js](src/http/security.js) before running.
+Initial allowed redirect hosts for login are "claude.ai", "claude.com", "localhost", "127.0.0.1". To add more, add in your .env file.
 
 ---
 

@@ -23,13 +23,13 @@ pack: ## Build the Claude Desktop extension (.mcpb)
 # ── HTTP server / Docker ──────────────────────────────────────────────────────
 
 up: ## Start the HTTP server only (no tunnel)
-	docker compose up --build
+	docker compose up --build -d
 
 dev: ## Start HTTP server + Cloudflare quick tunnel (no Cloudflare account needed)
-	docker compose --profile cloudflare-temp up --build
+	docker compose --profile cloudflare-temp up --build -d
 
 prod: ## Start HTTP server + named Cloudflare tunnel (requires CLOUDFLARE_TUNNEL_TOKEN in .env)
-	docker compose --profile cloudflare-named up
+	docker compose --profile cloudflare-named up -d
 
 down: ## Stop all Docker services
 	docker compose down
