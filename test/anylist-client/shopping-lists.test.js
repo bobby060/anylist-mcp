@@ -3,11 +3,9 @@
  */
 import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
 
-export async function runShoppingListsTests() {
+export async function runShoppingListsTests(client) {
   console.log('\n📋 Shopping Lists');
   const { test, results } = makeRunner();
-
-  const client = await createConnectedClient();
 
   await test('getLists returns array with name and uncheckedCount', async () => {
     const lists = client.getLists();
@@ -80,6 +78,5 @@ export async function runShoppingListsTests() {
     }
   });
 
-  await client.disconnect();
   return printSuiteResults('Shopping Lists', results());
 }

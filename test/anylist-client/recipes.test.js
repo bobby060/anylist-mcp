@@ -4,17 +4,15 @@
  * Also investigates the create→get race condition: a recipe that reports
  * "Created" but cannot be found in the immediately-following getRecipes call.
  */
-import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
+import { makeRunner, printSuiteResults } from './helpers.js';
 
 const RECIPE = `🧪 Test Recipe ${Date.now()}`;
 const RECIPE_INGREDIENTS = ['1 cup testing', '2 tbsp assertions'];
 const RECIPE_STEPS = ['Mix ingredients', 'Verify results'];
 
-export async function runRecipesTests() {
+export async function runRecipesTests(client) {
   console.log('\n📖 Recipes');
   const { test, results } = makeRunner();
-
-  const client = await createConnectedClient();
 
   // ── getRecipes ─────────────────────────────────────────────────────────
 
@@ -152,6 +150,5 @@ export async function runRecipesTests() {
   // Cleanup
   try { await client.deleteRecipe(RECIPE_FULL); } catch {}
 
-  await client.disconnect();
   return printSuiteResults('Recipes', results());
 }
