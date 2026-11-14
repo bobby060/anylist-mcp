@@ -172,6 +172,19 @@ Currently only username/password authentication is supported. In the future I ho
 
 
 
+## Upgrading
+
+**From a version that ran the container as root**: The container now runs as the
+unprivileged `node` user. Docker doesn't change the ownership of an existing
+`anylist_data` volume, so the old root-owned database can't be written and the
+server fails to start (`SQLITE_CANTOPEN` / `attempt to write a readonly database`).
+Fix the ownership once, then start as usual:
+```bash
+docker compose run --rm --no-deps --user root --entrypoint chown anylist-mcp -R node:node /data
+docker compose up -d --build
+```
+New installs don't need this.
+
 ## Troubleshooting
 
 **"Authorization with the MCP server failed" (auth flow completes but Claude can't connect)**: Cloudflare's Bot Fight Mode blocks requests from Claude's servers by default. Fix: in the Cloudflare dashboard → **Security → Bots**, allow AI bots (or disable Bot Fight Mode for your domain). The OAuth flow works because it's browser-based, but the actual MCP API calls come from Anthropic's servers and get flagged as bots.
