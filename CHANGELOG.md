@@ -1,3 +1,12 @@
+## [1.9.2](https://github.com/bobby060/anylist-mcp/compare/v1.9.1...v1.9.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **http:** always verify AnyList credentials on /setup ([df59d93](https://github.com/bobby060/anylist-mcp/commit/df59d938f6ae335e9a619af1fa89c7a1958268db))
+* **http:** bind MCP sessions to the authenticating user ([23522a8](https://github.com/bobby060/anylist-mcp/commit/23522a8ac863ed1c167df623f6f7bd56f171278f))
+* **http:** restrict OAuth redirect_uri and harden the container ([f5f8c28](https://github.com/bobby060/anylist-mcp/commit/f5f8c2872ce63c5f3540eab05c8b145521a044cc))
+
 ## [1.9.1](https://github.com/bobby060/anylist-mcp/compare/v1.9.0...v1.9.1) (2026-11-14)
 
 

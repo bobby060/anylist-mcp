@@ -1,6 +1,6 @@
 {
   "name": "anylist-mcp",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "MCP server for AnyList shopping list integration",
   "main": "src/server.js",
   "type": "module",
