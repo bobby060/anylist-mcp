@@ -1,3 +1,12 @@
+## [1.9.1](https://github.com/bobby060/anylist-mcp/compare/v1.9.0...v1.9.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* force a real fetch for user-facing recipe/collection/meal-plan reads ([c09930b](https://github.com/bobby060/anylist-mcp/commit/c09930be38f6f8100509fa1336b4982409407a4e))
+* load .env in the integration test runner ([ef02fec](https://github.com/bobby060/anylist-mcp/commit/ef02fec8627ebd630c678ae6cd28c7cb83726885))
+* use cached getRecipeCollections() instead of reaching into raw user data ([81e673f](https://github.com/bobby060/anylist-mcp/commit/81e673fec1ce7a8a7fd46c09d62914069b770922)), closes [bobby060/anylist-js#9](https://github.com/bobby060/anylist-js/issues/9) [#11](https://github.com/bobby060/anylist-mcp/issues/11)
+
 # [1.9.0](https://github.com/bobby060/anylist-mcp/compare/v1.8.1...v1.9.0) (2026-10-05)
 
 
