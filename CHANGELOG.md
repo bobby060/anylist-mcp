@@ -1,3 +1,10 @@
+## [1.9.3](https://github.com/bobby060/anylist-mcp/compare/v1.9.2...v1.9.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* small changes ([e1f38ce](https://github.com/bobby060/anylist-mcp/commit/e1f38ce3f9195d0ae7f1be8f82a05633439df225))
+
 ## [1.9.2](https://github.com/bobby060/anylist-mcp/compare/v1.9.1...v1.9.2) (2026-11-14)
 
 
