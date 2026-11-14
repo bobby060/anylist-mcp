@@ -2,16 +2,14 @@
  * Tests for meal planning: getMealPlanEvents, getMealPlanLabels,
  * createMealPlanEvent, deleteMealPlanEvent
  */
-import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
+import { makeRunner, printSuiteResults } from './helpers.js';
 
 // Use a future date unlikely to conflict with real events
 const TEST_DATE = '2099-01-15';
 
-export async function runMealPlanTests() {
+export async function runMealPlanTests(client) {
   console.log('\n🗓️  Meal Plan');
   const { test, results } = makeRunner();
-
-  const client = await createConnectedClient();
 
   // ── getMealPlanEvents ───────────────────────────────────────────────
 
@@ -114,6 +112,5 @@ export async function runMealPlanTests() {
     if (!threw) throw new Error('Should have thrown for non-existent event');
   });
 
-  await client.disconnect();
   return printSuiteResults('Meal Plan', results());
 }

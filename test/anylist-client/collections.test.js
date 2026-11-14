@@ -1,15 +1,13 @@
 /**
  * Tests for recipe collection operations: getRecipeCollections, createRecipeCollection
  */
-import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
+import { makeRunner, printSuiteResults } from './helpers.js';
 
 const COLLECTION = `🧪 Test Collection ${Date.now()}`;
 
-export async function runCollectionsTests() {
+export async function runCollectionsTests(client) {
   console.log('\n📚 Recipe Collections');
   const { test, results } = makeRunner();
-
-  const client = await createConnectedClient();
 
   await test('getRecipeCollections returns array', async () => {
     const collections = await client.getRecipeCollections();
@@ -55,6 +53,5 @@ export async function runCollectionsTests() {
     if (!found.recipeNames.includes(firstName)) throw new Error(`Expected recipe "${firstName}" in collection`);
   });
 
-  await client.disconnect();
   return printSuiteResults('Recipe Collections', results());
 }
