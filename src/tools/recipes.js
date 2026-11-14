@@ -5,6 +5,18 @@ import { normalizeRecipe } from "../recipe-normalizer.js";
 
 const toMinutes = (seconds) => Math.round(seconds / 60);
 const toSeconds = (minutes) => Math.round(minutes * 60);
+const toIngredient = (i) => {
+  if (i.heading) {
+    return { name: i.name, quantity: null, note: null, isHeading: true, rawIngredient: i.name };
+  }
+  const note = i.note?.trim() || null;
+  return {
+    name: i.name,
+    quantity: i.quantity,
+    note,
+    rawIngredient: `${i.quantity || ''} ${i.name}${note ? `, ${note}` : ''}`.trim(),
+  };
+};
 
 export function register(server, getClient) {
   const { elicitRequiredField, elicitConfirmation } = createElicitationHelpers(server);
@@ -25,9 +37,11 @@ export function register(server, getClient) {
       new_name: z.string().optional().describe("New name for the recipe (update only)"),
       search: z.string().optional().describe("Search query to filter recipes (list only)"),
       ingredients: z.array(z.object({
-        name: z.string().describe("Ingredient name, e.g. 'flour'"),
-        quantity: z.string().describe("Quantity with unit, e.g. '2 cups'"),
-      })).optional().describe("Ingredients with name and quantity (create, update). On update, replaces the entire ingredient list."),
+        name: z.string().describe("Ingredient name, e.g. 'flour'. For a heading, the heading text, e.g. 'Sauce'"),
+        quantity: z.string().optional().describe("Quantity with unit, e.g. '2 cups'. Omit for headings"),
+        note: z.string().optional().describe("Ingredient note, e.g. 'finely chopped' or 'about 1/2 tsp, optional'"),
+        heading: z.boolean().optional().describe("True if this entry is a section heading (e.g. 'Sauce', 'For the crust') rather than an ingredient"),
+      })).optional().describe("Ingredients in order, with name, quantity, optional note, and optional heading entries that group the ingredients after them (create, update). On update, replaces the entire ingredient list."),
       steps: z.array(z.string()).optional().describe("Preparation steps in order (create, update). On update, replaces the entire step list."),
       note: z.string().optional().describe("Recipe notes (create, update)"),
       source_name: z.string().optional().describe("Source name (create, update)"),
@@ -35,12 +49,14 @@ export function register(server, getClient) {
       prep_time: z.number().optional().describe("Prep time in minutes (create, update)"),
       cook_time: z.number().optional().describe("Cook time in minutes (create, update)"),
       servings: z.string().optional().describe("Servings, e.g. '4' or '4-6' (create, update)"),
+      nutrition: z.string().optional().describe("Nutrition facts as plain text, one item per line, e.g. 'Calories: 65\\nFat: 4 g' (create, update). On update, pass an empty string to clear it."),
+      photo_url: z.string().optional().describe("URL of a recipe photo, such as the source page's main image (create, update). AnyList shows the image in its apps. On update, replaces the photo link; pass an empty string to clear it. Photos already stored in AnyList are kept."),
       url: z.string().optional().describe("URL to import recipe from (import_url, normalize)"),
       text: z.string().optional().describe("Raw recipe text to parse (normalize only)"),
       save: z.boolean().optional().describe("If true, also save normalized recipe to AnyList (normalize only, default false)"),
     }
   }, async (params) => {
-    const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
+    const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, photo_url, nutrition, url, text: recipeText, save: saveRecipe } = params;
     try {
       const client = await getClient();
       await client.connect(null);
@@ -71,11 +87,20 @@ export function register(server, getClient) {
           if (recipe.cookTime) text += `Cook: ${toMinutes(recipe.cookTime)} min\n`;
           if (recipe.servings) text += `Servings: ${recipe.servings}\n`;
           if (recipe.createdAt) text += `Created: ${recipe.createdAt}\n`;
+          if (recipe.photoIds?.length) text += `Photos: ${recipe.photoIds.length} stored in AnyList\n`;
+          if (recipe.photoUrls?.length) text += `Photo links: ${recipe.photoUrls.join(', ')}\n`;
           if (recipe.note) text += `\nNotes: ${recipe.note}\n`;
+          if (recipe.nutritionalInfo) text += `\nNutrition:\n${recipe.nutritionalInfo}\n`;
           if (recipe.ingredients.length > 0) {
             text += `\n## Ingredients\n`;
             recipe.ingredients.forEach(i => {
-              text += `- ${i.rawIngredient || [i.quantity, i.name, i.note].filter(Boolean).join(' ')}\n`;
+              if (i.isHeading) {
+                text += `### ${i.name || i.rawIngredient}\n`;
+                return;
+              }
+              text += i.name
+                ? `- ${[i.quantity, i.name].filter(Boolean).join(' ')}${i.note ? ` (note: ${i.note})` : ''}\n`
+                : `- ${i.rawIngredient || ''}\n`;
             });
           }
           if (recipe.preparationSteps.length > 0) {
@@ -96,11 +121,7 @@ export function register(server, getClient) {
           }
           const result = await client.createRecipe({
             name: recipeName,
-            ingredients: (ingredients || []).map(i => ({
-              name: i.name,
-              quantity: i.quantity,
-              rawIngredient: `${i.quantity} ${i.name}`.trim(),
-            })),
+            ingredients: (ingredients || []).map(toIngredient),
             preparationSteps: steps || [],
             note: note || null,
             sourceName: source_name || null,
@@ -108,6 +129,8 @@ export function register(server, getClient) {
             prepTime: prep_time ? toSeconds(prep_time) : null,
             cookTime: cook_time ? toSeconds(cook_time) : null,
             servings: servings || null,
+            photoUrls: photo_url ? [photo_url] : [],
+            nutritionalInfo: nutrition || null,
           });
           return textResponse(`Created recipe "${result.name}"`);
         }
@@ -122,11 +145,7 @@ export function register(server, getClient) {
             fields.name = new_name;
           }
           if (ingredients !== undefined) {
-            fields.ingredients = ingredients.map(i => ({
-              name: i.name,
-              quantity: i.quantity,
-              rawIngredient: `${i.quantity} ${i.name}`.trim(),
-            }));
+            fields.ingredients = ingredients.map(toIngredient);
           }
           if (steps !== undefined) fields.preparationSteps = steps;
           if (note !== undefined) fields.note = note;
@@ -135,8 +154,10 @@ export function register(server, getClient) {
           if (prep_time !== undefined) fields.prepTime = toSeconds(prep_time);
           if (cook_time !== undefined) fields.cookTime = toSeconds(cook_time);
           if (servings !== undefined) fields.servings = servings;
+          if (photo_url !== undefined) fields.photoUrls = photo_url ? [photo_url] : [];
+          if (nutrition !== undefined) fields.nutritionalInfo = nutrition || null;
           if (Object.keys(fields).length === 0) {
-            return errorResponse('Action "update" requires at least one field to change (new_name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, or servings).');
+            return errorResponse('Action "update" requires at least one field to change (new_name, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, photo_url, or nutrition).');
           }
           const updated = await client.updateRecipe(updateRecipeName, fields);
           if (fields.name !== undefined) return textResponse(`Renamed recipe "${updateRecipeName}" to "${updated.name}"`);
