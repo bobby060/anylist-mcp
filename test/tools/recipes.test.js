@@ -51,6 +51,41 @@ describe('recipes tool', () => {
       assert.ok(result.content[0].text.includes('Boil water'));
     });
 
+    it('shows ingredient notes', async () => {
+      client._recipes.push({
+        identifier: 'r-n',
+        name: 'Sauce',
+        ingredients: [{ name: 'brown sugar', quantity: '2 g', note: 'or honey, optional', rawIngredient: '2 g brown sugar' }],
+      });
+      const result = await handlers.recipes({ action: 'get', name: 'Sauce' });
+      assert.ok(result.content[0].text.includes('- 2 g brown sugar (note: or honey, optional)'));
+    });
+
+    it('shows photos stored in AnyList', async () => {
+      client._recipes.push({ identifier: 'r-s', name: 'Tart', photoIds: ['p1'] });
+      const text = (await handlers.recipes({ action: 'get', name: 'Tart' })).content[0].text;
+      assert.ok(text.includes('Photos: 1 stored in AnyList'));
+    });
+
+    it('shows nutrition facts', async () => {
+      client._recipes.push({ identifier: 'r-z', name: 'Salad', nutritionalInfo: 'Calories: 120' });
+      const text = (await handlers.recipes({ action: 'get', name: 'Salad' })).content[0].text;
+      assert.ok(text.includes('Nutrition:\nCalories: 120'));
+    });
+
+    it('shows ingredient headings and photos', async () => {
+      client._recipes.push({
+        identifier: 'r-h',
+        name: 'Pie',
+        photoUrls: ['https://example.com/pie.jpg'],
+        ingredients: [{ name: 'Crust', isHeading: true, rawIngredient: 'Crust' }, { name: 'flour', quantity: '250 g' }],
+      });
+      const text = (await handlers.recipes({ action: 'get', name: 'Pie' })).content[0].text;
+      assert.ok(text.includes('### Crust'));
+      assert.ok(text.includes('- 250 g flour'));
+      assert.ok(text.includes('Photo links: https://example.com/pie.jpg'));
+    });
+
     it('returns error for non-existent recipe', async () => {
       const result = await handlers.recipes({ action: 'get', name: 'Nope' });
       assert.equal(result.isError, true);
@@ -77,6 +112,51 @@ describe('recipes tool', () => {
         servings: '4',
       });
       assert.equal(client._recipes[0].name, 'Full Recipe');
+    });
+
+    it('stores ingredient notes separately from name and quantity', async () => {
+      await handlers.recipes({
+        action: 'create',
+        name: 'Noted',
+        ingredients: [
+          { name: 'kosher salt', quantity: '3.5 g', note: 'about 1 1/4 tsp Diamond Crystal' },
+          { name: 'flour', quantity: '15 g' },
+        ],
+      });
+      const [salt, flour] = client._recipes[0].ingredients;
+      assert.equal(salt.name, 'kosher salt');
+      assert.equal(salt.quantity, '3.5 g');
+      assert.equal(salt.note, 'about 1 1/4 tsp Diamond Crystal');
+      assert.equal(salt.rawIngredient, '3.5 g kosher salt, about 1 1/4 tsp Diamond Crystal');
+      assert.equal(flour.note, null);
+      assert.equal(flour.rawIngredient, '15 g flour');
+    });
+
+    it('stores ingredient headings', async () => {
+      await handlers.recipes({
+        action: 'create',
+        name: 'Sectioned',
+        ingredients: [
+          { name: 'Sauce', heading: true },
+          { name: 'butter', quantity: '2 Tbsp' },
+        ],
+      });
+      const [heading, butter] = client._recipes[0].ingredients;
+      assert.equal(heading.isHeading, true);
+      assert.equal(heading.name, 'Sauce');
+      assert.equal(heading.rawIngredient, 'Sauce');
+      assert.equal(heading.quantity, null);
+      assert.ok(!butter.isHeading);
+    });
+
+    it('stores nutrition facts', async () => {
+      await handlers.recipes({ action: 'create', name: 'Nutty', nutrition: 'Calories: 65\nFat: 4 g' });
+      assert.equal(client._recipes[0].nutritionalInfo, 'Calories: 65\nFat: 4 g');
+    });
+
+    it('stores a photo URL', async () => {
+      await handlers.recipes({ action: 'create', name: 'Pictured', photo_url: 'https://example.com/a.jpg' });
+      assert.deepEqual(client._recipes[0].photoUrls, ['https://example.com/a.jpg']);
     });
 
     it('stores prep/cook times in seconds', async () => {
@@ -190,6 +270,32 @@ describe('recipes tool', () => {
       });
       assert.equal(client._recipes[0].ingredients.length, 1);
       assert.equal(client._recipes[0].ingredients[0].name, 'penne');
+    });
+
+    it('sets and clears nutrition on update', async () => {
+      client._recipes.push({ identifier: 'r-q', name: 'Stew' });
+      await handlers.recipes({ action: 'update', name: 'Stew', nutrition: 'Calories: 300' });
+      assert.equal(client._recipes[0].nutritionalInfo, 'Calories: 300');
+      await handlers.recipes({ action: 'update', name: 'Stew', nutrition: '' });
+      assert.equal(client._recipes[0].nutritionalInfo, null);
+    });
+
+    it('sets and clears the photo on update', async () => {
+      client._recipes.push({ identifier: 'r-p', name: 'Soup', photoUrls: ['https://example.com/old.jpg'] });
+      await handlers.recipes({ action: 'update', name: 'Soup', photo_url: 'https://example.com/new.jpg' });
+      assert.deepEqual(client._recipes[0].photoUrls, ['https://example.com/new.jpg']);
+      await handlers.recipes({ action: 'update', name: 'Soup', photo_url: '' });
+      assert.deepEqual(client._recipes[0].photoUrls, []);
+    });
+
+    it('keeps ingredient notes on update', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta', ingredients: [] });
+      await handlers.recipes({
+        action: 'update',
+        name: 'Pasta',
+        ingredients: [{ name: 'garlic', quantity: '7 g', note: 'minced' }],
+      });
+      assert.equal(client._recipes[0].ingredients[0].note, 'minced');
     });
 
     it('returns error when no fields are provided', async () => {

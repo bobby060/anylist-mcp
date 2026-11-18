@@ -79,7 +79,7 @@ Manage AnyList recipes, including URL import and text parsing.
 | `name` | string | For most actions | Recipe name |
 | `new_name` | string | No | Rename the recipe (update only) |
 | `search` | string | No | Filter recipes by name (list only) |
-| `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
+| `ingredients` | array | No | `[{ name, quantity?, note?, heading? }]` in order (create, update — replaces list on update). `note` is optional per ingredient; `heading: true` makes the entry a section heading (omit `quantity`) |
 | `steps` | string[] | No | Preparation steps (create, update — replaces list on update) |
 | `note` | string | No | Recipe notes (create, update) |
 | `source_name` | string | No | Source attribution (create, update) |
@@ -87,6 +87,8 @@ Manage AnyList recipes, including URL import and text parsing.
 | `prep_time` | number | No | Prep time in minutes (create, update) |
 | `cook_time` | number | No | Cook time in minutes (create, update) |
 | `servings` | string | No | e.g. `"4"` or `"4-6"` (create, update) |
+| `nutrition` | string | No | Nutrition facts as plain text (create, update — `""` clears it) |
+| `photo_url` | string | No | Recipe photo URL (create, update). AnyList shows the image in its apps. On update it replaces the photo link (`""` clears it); photos already stored in AnyList are kept |
 | `url` | string | For import/normalize | URL to fetch recipe from |
 | `text` | string | For normalize | Raw recipe text to parse |
 | `save` | boolean | No | Save normalized result to AnyList (normalize only) |
