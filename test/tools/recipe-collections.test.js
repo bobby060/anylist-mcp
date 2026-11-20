@@ -67,8 +67,28 @@ describe('recipe_collections tool', () => {
       assert.ok(result.content[0].text.includes('No recipe found named: Nope'));
     });
 
+    it('returns an error listing the candidates when a recipe name is ambiguous', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Stew' }, { identifier: 'r-2', name: 'STEW' });
+      const result = await handlers.recipe_collections({ action: 'add_recipes', name: 'Weeknight', recipe_names: ['stew'] });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('"Stew" (id: r-1)'));
+      assert.ok(result.content[0].text.includes('"STEW" (id: r-2)'));
+    });
+
+    it('accepts recipe ids', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Stew' }, { identifier: 'r-2', name: 'Stew' });
+      const result = await handlers.recipe_collections({ action: 'add_recipes', name: 'Weeknight', recipe_names: ['r-2'] });
+      assert.ok(result.content[0].text.includes('Added to "Weeknight": Stew'));
+    });
+
     it('requires recipe_names', async () => {
       const result = await handlers.recipe_collections({ action: 'add_recipes', name: 'Weeknight' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('requires recipe_names'));
+    });
+
+    it('checks recipe_names before asking for the collection name', async () => {
+      const result = await handlers.recipe_collections({ action: 'remove_recipes' });
       assert.equal(result.isError, true);
       assert.ok(result.content[0].text.includes('requires recipe_names'));
     });
@@ -85,6 +105,13 @@ describe('recipe_collections tool', () => {
       client._collections.push({ name: 'Old Collection', recipeCount: 0, recipeNames: [] });
       const result = await handlers.recipe_collections({ action: 'delete', name: 'Old Collection' });
       assert.ok(result.content[0].text.includes('Deleted recipe collection'));
+      assert.equal(client._collections.length, 0);
+    });
+
+    it('deletes by id and names the deleted collection', async () => {
+      client._collections.push({ identifier: 'c-1', name: 'Old Collection', recipeCount: 0, recipeNames: [] });
+      const result = await handlers.recipe_collections({ action: 'delete', name: 'c-1' });
+      assert.ok(result.content[0].text.includes('Deleted recipe collection "Old Collection"'));
       assert.equal(client._collections.length, 0);
     });
 

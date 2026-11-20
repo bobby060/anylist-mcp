@@ -15,8 +15,8 @@ export function register(server, getClient) {
 - delete: Delete a collection (its recipes are not deleted)`,
     inputSchema: {
       action: z.enum(["list", "create", "add_recipes", "remove_recipes", "delete"]).describe("The collection action to perform"),
-      name: z.string().optional().describe("Collection name (required for create, add_recipes, remove_recipes, delete)"),
-      recipe_names: z.array(z.string()).optional().describe("Recipe names (create: recipes to include; add_recipes, remove_recipes: required)"),
+      name: z.string().optional().describe("Collection name (required for create, add_recipes, remove_recipes, delete). For add_recipes, remove_recipes and delete, a collection id also works, and names match the same way as recipe names."),
+      recipe_names: z.array(z.string()).optional().describe("Recipe names or ids (create: recipes to include; add_recipes, remove_recipes: required)"),
     }
   }, async (params) => {
     const { action, name, recipe_names } = params;
@@ -39,9 +39,9 @@ export function register(server, getClient) {
         case "add_recipes":
         case "remove_recipes": {
           const adding = action === "add_recipes";
+          if (!recipe_names || recipe_names.length === 0) return errorResponse(`Action "${action}" requires recipe_names.`);
           let collectionName = name;
           if (!collectionName) collectionName = await elicitRequiredField("name", adding ? "Which collection should the recipes be added to?" : "Which collection should the recipes be removed from?");
-          if (!recipe_names || recipe_names.length === 0) return errorResponse(`Action "${action}" requires recipe_names.`);
           const result = adding
             ? await client.addRecipesToCollection(collectionName, recipe_names)
             : await client.removeRecipesFromCollection(collectionName, recipe_names);
@@ -55,8 +55,8 @@ export function register(server, getClient) {
         case "delete": {
           let deleteCollectionName = name;
           if (!deleteCollectionName) deleteCollectionName = await elicitRequiredField("name", "Which collection would you like to delete?");
-          await client.deleteRecipeCollection(deleteCollectionName);
-          return textResponse(`Deleted recipe collection "${deleteCollectionName}"`);
+          const deleted = await client.deleteRecipeCollection(deleteCollectionName);
+          return textResponse(`Deleted recipe collection "${deleted.name}"`);
         }
       }
     } catch (error) {

@@ -7,6 +7,25 @@ const requireFromAnyList = createRequire(new URL('../anylist-js/lib/index.js', i
 const FormData = requireFromAnyList('form-data');
 const uuid = requireFromAnyList('./uuid');
 
+/**
+ * Resolve a reference to a recipe or recipe collection: its id, or its name.
+ * An exact name match wins; a case-insensitive match is used only when exactly
+ * one item has it. Returns null when nothing matches. Throws, listing the
+ * candidates and their ids, when the name matches more than one item.
+ */
+export function findByNameOrId(items, nameOrId) {
+  const byId = items.find(r => r.identifier === nameOrId);
+  if (byId) return byId;
+  const exact = items.filter(r => r.name === nameOrId);
+  const matches = exact.length > 0
+    ? exact
+    : items.filter(r => r.name && r.name.toLowerCase() === nameOrId.toLowerCase());
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  const candidates = matches.map(r => `"${r.name}" (id: ${r.identifier})`).join(', ');
+  throw new Error(`"${nameOrId}" matches ${matches.length}: ${candidates}`);
+}
+
 class AnyListClient {
   /**
    * @param {{ username?: string, password?: string, defaultListName?: string }} [credentials]
@@ -446,7 +465,7 @@ class AnyListClient {
     try {
       // User-facing read — force a real fetch, same reasoning as getRecipes().
       const recipes = await this.client.getRecipes(true);
-      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
@@ -600,7 +619,7 @@ class AnyListClient {
    * `ingredients` and `preparationSteps`, when provided, REPLACE the existing
    * array wholesale — they are not merged item-by-item.
    *
-   * @param {string} recipeName - name identifying the recipe to update
+   * @param {string} recipeName - name or id of the recipe to update (see findByNameOrId)
    * @param {object} fields - subset of { name, note, sourceName, sourceUrl,
    *   prepTime, cookTime, servings, ingredients, preparationSteps }; keys with an
    *   `undefined` value are ignored. `name` renames the recipe in place.
@@ -611,14 +630,10 @@ class AnyListClient {
     }
     try {
       const recipes = await this.client.getRecipes();
-      const matches = recipes.filter(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
-      if (matches.length === 0) {
+      const existing = findByNameOrId(recipes, recipeName);
+      if (!existing) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
-      if (matches.length > 1) {
-        throw new Error(`Multiple recipes named "${recipeName}" (${matches.length}) exist. Rename or remove the duplicates so the target is unambiguous, then try again.`);
-      }
-      const existing = matches[0];
       if (fields.name !== undefined && recipes.some(r => r !== existing && r.name && r.name.toLowerCase() === fields.name.toLowerCase())) {
         throw new Error(`Cannot rename to "${fields.name}": a recipe with that name already exists.`);
       }
@@ -673,12 +688,13 @@ class AnyListClient {
     }
     try {
       const recipes = await this.client.getRecipes();
-      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
       await recipe.delete();
       console.error(`Deleted recipe: ${recipe.name}`);
+      return { identifier: recipe.identifier, name: recipe.name };
     } catch (error) {
       throw new Error(`Failed to delete recipe: ${error.message}`);
     }
@@ -840,7 +856,7 @@ class AnyListClient {
       if (recipeNames.length > 0) {
         const recipes = await this.client.getRecipes();
         for (const rName of recipeNames) {
-          const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
+          const r = findByNameOrId(recipes, rName);
           if (r) recipeIds.push(r.identifier);
         }
       }
@@ -876,7 +892,7 @@ class AnyListClient {
     try {
       const userData = await this.client._getUserData(true);
       const recipeData = userData.recipeDataResponse;
-      const raw = (recipeData.recipeCollections || []).find(c => c.name && c.name.toLowerCase() === collectionName.toLowerCase());
+      const raw = findByNameOrId(recipeData.recipeCollections || [], collectionName);
       if (!raw) throw new Error(`Recipe collection "${collectionName}" not found`);
 
       const inCollection = new Set(raw.recipeIds || []);
@@ -885,11 +901,13 @@ class AnyListClient {
       const unchanged = [];
       const notFound = [];
       const ids = [];
+      const seen = new Set();
       for (const rName of recipeNames) {
-        const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
+        const r = findByNameOrId(recipes, rName);
         if (!r) { notFound.push(rName); continue; }
-        const isIn = inCollection.has(r.identifier);
-        if ((mode === 'add') === isIn || ids.includes(r.identifier)) { unchanged.push(r.name); continue; }
+        if (seen.has(r.identifier)) continue;
+        seen.add(r.identifier);
+        if ((mode === 'add') === inCollection.has(r.identifier)) { unchanged.push(r.name); continue; }
         ids.push(r.identifier);
         changed.push(r.name);
       }
@@ -936,11 +954,12 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const collections = await this.client.getRecipeCollections();
-      const collection = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+      const collections = await this.client.getRecipeCollections(true);
+      const collection = findByNameOrId(collections, name);
       if (!collection) throw new Error(`Recipe collection "${name}" not found`);
       await collection.delete();
-      console.error(`Deleted recipe collection: ${name}`);
+      console.error(`Deleted recipe collection: ${collection.name}`);
+      return { identifier: collection.identifier, name: collection.name };
     } catch (error) {
       throw new Error(`Failed to delete recipe collection: ${error.message}`);
     }

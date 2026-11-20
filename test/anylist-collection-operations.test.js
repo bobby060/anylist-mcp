@@ -73,8 +73,50 @@ describe('AnyListClient collection membership operations', () => {
 
   it('sends nothing when no recipe changes', async () => {
     const result = await client.addRecipesToCollection('Weeknight', ['Pasta', 'pasta']);
-    assert.deepEqual(result.unchanged, ['Pasta', 'Pasta']);
+    assert.deepEqual(result.unchanged, ['Pasta']);
     assert.equal(posts.length, 0);
+  });
+
+  it('reports a recipe named twice (by name and by id) once', async () => {
+    const result = await client.addRecipesToCollection('Weeknight', ['Salad', 'r-salad']);
+    assert.deepEqual(result, { name: 'Weeknight', changed: ['Salad'], unchanged: [], notFound: [] });
+    assert.equal(decodeSentOperations(posts[0].body).length, 1);
+  });
+
+  it('prefers the exact collection name over one differing only in case', async () => {
+    const userData = await client.client._getUserData();
+    userData.recipeDataResponse.recipeCollections.push({ identifier: 'c-2', name: 'WEEKNIGHT', timestamp: 1, recipeIds: [] });
+    client.client._getUserData = async () => userData;
+    await client.addRecipesToCollection('WEEKNIGHT', ['Salad']);
+    assert.equal(decodeSentOperations(posts[0].body)[0].recipeCollection.identifier, 'c-2');
+  });
+
+  it('sends nothing when the collection name is ambiguous', async () => {
+    const userData = await client.client._getUserData();
+    userData.recipeDataResponse.recipeCollections.push({ identifier: 'c-2', name: 'WEEKNIGHT', timestamp: 1, recipeIds: [] });
+    client.client._getUserData = async () => userData;
+    await assert.rejects(() => client.removeRecipesFromCollection('weeknight', ['Pasta']), /"weeknight" matches 2/);
+    assert.equal(posts.length, 0);
+  });
+
+  it('sends nothing when any recipe name is ambiguous', async () => {
+    const userData = await client.client._getUserData();
+    userData.recipeDataResponse.recipes.push({ identifier: 'r-soup-2', name: 'SOUP' });
+    client.client._getUserData = async () => userData;
+    await assert.rejects(() => client.removeRecipesFromCollection('Weeknight', ['Pasta', 'soup']), /"soup" matches 2/);
+    assert.equal(posts.length, 0);
+  });
+
+  it('deletes nothing when the current collection names are ambiguous', async () => {
+    const deleted = [];
+    // The cached list predates WEEKNIGHT; only a refreshed fetch has it.
+    client.client.getRecipeCollections = async (refreshCache) => [
+      { identifier: 'c-1', name: 'Weeknight', delete: async () => { deleted.push('c-1'); } },
+      ...(refreshCache ? [{ identifier: 'c-2', name: 'WEEKNIGHT', delete: async () => { deleted.push('c-2'); } }] : []),
+    ];
+    await assert.rejects(() => client.deleteRecipeCollection('weeknight'), /"weeknight" matches 2/);
+    await client.deleteRecipeCollection('WEEKNIGHT');
+    assert.deepEqual(deleted, ['c-2']);
   });
 
   it('throws when the collection does not exist', async () => {
