@@ -76,7 +76,7 @@ Manage AnyList recipes, including URL import and text parsing.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
-| `name` | string | For most actions | Recipe name |
+| `name` | string | For most actions | Recipe name. For get, update and delete, a recipe ID also works. An exact name match wins; a case-insensitive match is used only when exactly one recipe has it, and an ambiguous name returns an error listing the candidates and their IDs |
 | `new_name` | string | No | Rename the recipe (update only) |
 | `search` | string | No | Filter recipes by name (list only) |
 | `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
@@ -102,6 +102,9 @@ Manage AnyList recipes, including URL import and text parsing.
 
 // Get full details — ingredients and steps
 { "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
+
+// Get a recipe by ID (shown by list and get)
+{ "name": "recipes", "arguments": { "action": "get", "name": "8f14e45fceea167a5a36dedd4bea2543" } }
 
 // Create a recipe
 { "name": "recipes", "arguments": {
@@ -180,9 +183,9 @@ Organize recipes into named collections.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | enum | Yes | `list` or `create` |
-| `name` | string | For create | Collection name |
-| `recipe_names` | string[] | No | Recipes to include on creation |
+| `action` | enum | Yes | `list`, `create`, `add_recipes`, `remove_recipes`, or `delete` |
+| `name` | string | For create, add_recipes, remove_recipes, delete | Collection name. For add_recipes, remove_recipes and delete, a collection ID also works, and names match the same way as in `recipes` |
+| `recipe_names` | string[] | For add_recipes, remove_recipes | Recipe names or IDs to include on creation, or to add or remove. Names match the same way as in `recipes` |
 
 **Actions:**
 
@@ -195,6 +198,20 @@ Organize recipes into named collections.
     "action": "create",
     "name": "Weeknight Dinners",
     "recipe_names": ["Simple Pasta", "Chicken Tikka Masala"]
+} }
+
+// Add recipes to an existing collection (recipes already in it are skipped)
+{ "name": "recipe_collections", "arguments": {
+    "action": "add_recipes",
+    "name": "Weeknight Dinners",
+    "recipe_names": ["Sheet Pan Gnocchi"]
+} }
+
+// Remove recipes from a collection (the recipes themselves are kept)
+{ "name": "recipe_collections", "arguments": {
+    "action": "remove_recipes",
+    "name": "Weeknight Dinners",
+    "recipe_names": ["Simple Pasta"]
 } }
 ```
 

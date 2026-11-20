@@ -56,6 +56,35 @@ describe('recipes tool', () => {
       assert.equal(result.isError, true);
       assert.ok(result.content[0].text.includes('not found'));
     });
+
+    it('prefers an exact name match over a case-insensitive one', async () => {
+      client._recipes.push(
+        { identifier: 'r-upper', name: 'Easy Asian Cucumber Salad' },
+        { identifier: 'r-lower', name: 'easy Asian Cucumber Salad' },
+      );
+      const result = await handlers.recipes({ action: 'get', name: 'easy Asian Cucumber Salad' });
+      assert.ok(result.content[0].text.includes('r-lower'));
+    });
+
+    it('falls back to a case-insensitive match when it is unique', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Easy Asian Cucumber Salad' });
+      const result = await handlers.recipes({ action: 'get', name: 'easy asian cucumber salad' });
+      assert.ok(result.content[0].text.includes('# Easy Asian Cucumber Salad'));
+    });
+
+    it('returns an error listing the candidates when the case-insensitive match is ambiguous', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'PASTA' });
+      const result = await handlers.recipes({ action: 'get', name: 'pasta' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('"Pasta" (id: r-1)'));
+      assert.ok(result.content[0].text.includes('"PASTA" (id: r-2)'));
+    });
+
+    it('accepts a recipe id in place of the name', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'get', name: 'r-2' });
+      assert.ok(result.content[0].text.includes('ID: r-2'));
+    });
   });
 
   describe('create', () => {
@@ -83,6 +112,24 @@ describe('recipes tool', () => {
       await handlers.recipes({ action: 'create', name: 'Timed', prep_time: 5, cook_time: 30 });
       assert.equal(client._recipes[0].prepTime, 300);
       assert.equal(client._recipes[0].cookTime, 1800);
+    });
+
+    it('asks to overwrite the exact-case match, not another recipe differing only in case', async () => {
+      client._recipes.push({ identifier: 'r-upper', name: 'Pasta' }, { identifier: 'r-lower', name: 'pasta' });
+      const result = await handlers.recipes({ action: 'create', name: 'pasta' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('Recipe "pasta" already exists'));
+      assert.equal(client._recipes.length, 2);
+    });
+
+    it('returns an error and deletes nothing when the name is ambiguous', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'PASTA' });
+      const result = await handlers.recipes({ action: 'create', name: 'pasta' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('matches 2'));
+      // create takes a name, not an id: passing an id would create a recipe named by it
+      assert.ok(!result.content[0].text.includes('Pass one of these ids'));
+      assert.equal(client._recipes.length, 2);
     });
   });
 
@@ -205,11 +252,32 @@ describe('recipes tool', () => {
       assert.ok(result.content[0].text.includes('not found'));
     });
 
-    it('returns error when the name matches multiple recipes', async () => {
+    it('returns error listing the candidates when the name matches multiple recipes', async () => {
       client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'Pasta' });
       const result = await handlers.recipes({ action: 'update', name: 'Pasta', note: 'x' });
       assert.equal(result.isError, true);
-      assert.ok(result.content[0].text.includes('Multiple recipes'));
+      assert.ok(result.content[0].text.includes('matches 2'));
+      assert.ok(result.content[0].text.includes('r-1') && result.content[0].text.includes('r-2'));
+      assert.equal(client._recipes[0].note, undefined);
+      assert.equal(client._recipes[1].note, undefined);
+    });
+
+    it('updates by id when names are duplicated', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'update', name: 'r-2', note: 'x' });
+      assert.ok(result.content[0].text.includes('Updated recipe "Pasta"'));
+      assert.equal(client._recipes[0].note, undefined);
+      assert.equal(client._recipes[1].note, 'x');
+    });
+
+    it('updates the exact-case match, not another recipe differing only in case', async () => {
+      client._recipes.push(
+        { identifier: 'r-upper', name: 'Easy Asian Cucumber Salad' },
+        { identifier: 'r-lower', name: 'easy Asian Cucumber Salad' },
+      );
+      await handlers.recipes({ action: 'update', name: 'easy Asian Cucumber Salad', note: 'x' });
+      assert.equal(client._recipes[0].note, undefined);
+      assert.equal(client._recipes[1].note, 'x');
     });
   });
 
@@ -224,6 +292,30 @@ describe('recipes tool', () => {
     it('returns error for non-existent recipe', async () => {
       const result = await handlers.recipes({ action: 'delete', name: 'Nope' });
       assert.equal(result.isError, true);
+    });
+
+    it('deletes the exact-case match, not another recipe differing only in case', async () => {
+      client._recipes.push(
+        { identifier: 'r-upper', name: 'Easy Asian Cucumber Salad' },
+        { identifier: 'r-lower', name: 'easy Asian Cucumber Salad' },
+      );
+      await handlers.recipes({ action: 'delete', name: 'easy Asian Cucumber Salad' });
+      assert.deepEqual(client._recipes.map(r => r.identifier), ['r-upper']);
+    });
+
+    it('deletes nothing when the name is ambiguous', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'PASTA' });
+      const result = await handlers.recipes({ action: 'delete', name: 'pasta' });
+      assert.equal(result.isError, true);
+      assert.ok(result.content[0].text.includes('matches 2'));
+      assert.equal(client._recipes.length, 2);
+    });
+
+    it('deletes by id and names the deleted recipe', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Pasta' }, { identifier: 'r-2', name: 'Pasta' });
+      const result = await handlers.recipes({ action: 'delete', name: 'r-1' });
+      assert.ok(result.content[0].text.includes('Deleted recipe "Pasta"'));
+      assert.deepEqual(client._recipes.map(r => r.identifier), ['r-2']);
     });
   });
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { textResponse, errorResponse } from "./helpers.js";
 import { createElicitationHelpers } from "./elicitation.js";
 import { normalizeRecipe } from "../recipe-normalizer.js";
+import { findByNameOrId } from "../anylist-client.js";
 
 const toMinutes = (seconds) => Math.round(seconds / 60);
 const toSeconds = (minutes) => Math.round(minutes * 60);
@@ -13,15 +14,15 @@ export function register(server, getClient) {
     title: "Recipes",
     description: `Manage AnyList recipes. Actions:
 - list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
-- get: Get full recipe details (ingredients, steps) by name
+- get: Get full recipe details (ingredients, steps) by name or id
 - create: Create a new recipe
-- update: Partially update an existing recipe by name (only the fields you pass change; the rest are preserved). Pass new_name to rename it.
-- delete: Delete a recipe by name
+- update: Partially update an existing recipe by name or id (only the fields you pass change; the rest are preserved). Pass new_name to rename it.
+- delete: Delete a recipe by name or id
 - import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)
 - normalize: Preview/parse a recipe from a URL or raw text without saving (set save=true to also save)`,
     inputSchema: {
       action: z.enum(["list", "get", "create", "update", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
-      name: z.string().optional().describe("Recipe name (required for get, create, update, delete)"),
+      name: z.string().optional().describe("Recipe name (required for create) or, for get, update and delete, a recipe name or id. An exact name match wins; a case-insensitive match is used only when it is unique."),
       new_name: z.string().optional().describe("New name for the recipe (update only)"),
       search: z.string().optional().describe("Search query to filter recipes (list only)"),
       ingredients: z.array(z.object({
@@ -88,11 +89,11 @@ export function register(server, getClient) {
           let recipeName = name;
           if (!recipeName) recipeName = await elicitRequiredField("name", "What should the recipe be called?");
           const existingRecipes = await client.getRecipes(recipeName);
-          const exactMatch = existingRecipes.find(r => r.name.toLowerCase() === recipeName.toLowerCase());
+          const exactMatch = findByNameOrId(existingRecipes, recipeName);
           if (exactMatch) {
             const confirmed = await elicitConfirmation(`Recipe "${exactMatch.name}" already exists. Overwrite?`);
             if (!confirmed) return textResponse(`Cancelled — recipe "${exactMatch.name}" was not overwritten.`);
-            await client.deleteRecipe(exactMatch.name);
+            await client.deleteRecipe(exactMatch.identifier);
           }
           const result = await client.createRecipe({
             name: recipeName,
@@ -145,8 +146,8 @@ export function register(server, getClient) {
         case "delete": {
           let deleteRecipeName = name;
           if (!deleteRecipeName) deleteRecipeName = await elicitRequiredField("name", "Which recipe would you like to delete?");
-          await client.deleteRecipe(deleteRecipeName);
-          return textResponse(`Deleted recipe "${deleteRecipeName}"`);
+          const deleted = await client.deleteRecipe(deleteRecipeName);
+          return textResponse(`Deleted recipe "${deleted.name}"`);
         }
         case "import_url": {
           let importUrl = url;
