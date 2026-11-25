@@ -33,6 +33,7 @@ Manage shopping lists and items.
 | `include_notes` | boolean | No | Include item notes in output (list_items only) |
 | `store_name` | string | No | Filter items by store (add_items, set_item_category only) |
 | `category` | string | No | Category for item (add_item only) |
+| `category_name` | string | No | Custom category to add the item into, matched by name, ignoring case and extra spaces (add_item only; wins over `category`) |
 
 **Actions:**
 
@@ -64,8 +65,50 @@ Manage shopping lists and items.
 // Set store for an item
 { "name": "shopping", "arguments": { "action": "set_item_store", "name": "Milk", "store_name": "Costco" } }
 
-// Set category for an item
+// Add an item straight into a custom category
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Bagels", "category_name": "Bakery" } }
 ```
+
+---
+
+## `categories`
+
+Manage the custom categories on a shopping list.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | enum | Yes | See actions below |
+| `list_name` | string | No | Target list (defaults to configured default) |
+| `name` | string | For create, rename, delete | Category name. Matching ignores case and leading or trailing spaces |
+| `new_name` | string | For rename | New category name |
+| `group_name` | string | No | Category group for a new category (create only; defaults to the list's first group) |
+| `item_name` | string | For set_item_category | Item to move |
+| `category_name` | string | For set_item_category | Category to move the item into |
+| `confirm` | boolean | No | Skip the confirmation prompt (delete only; required in clients without elicitation) |
+
+**Actions:**
+
+```json
+// List category groups and their categories
+{ "name": "categories", "arguments": { "action": "list_categories" } }
+
+// Create a category
+{ "name": "categories", "arguments": { "action": "create_category", "name": "Frozen" } }
+
+// Rename a category
+{ "name": "categories", "arguments": { "action": "rename_category", "name": "Frozen", "new_name": "Freezer" } }
+
+// Delete a category (see the known issue below)
+{ "name": "categories", "arguments": { "action": "delete_category", "name": "Freezer", "confirm": true } }
+
+// Move an existing item into a category
+{ "name": "categories", "arguments": { "action": "set_item_category", "item_name": "Bagels", "category_name": "Bakery" } }
+```
+
+**Notes:**
+
+- `set_item_category` deletes and re-adds the item, because AnyList has no working move operation. Name, quantity, notes and checked state are kept; the item's photos, price history, store, recipe and meal-plan links and manual sort position are not.
+- **Known issue:** AnyList currently accepts `delete_category` requests without applying them. The tool re-reads the list afterwards and returns an error if the category is still there, so it never reports a false success. See `docs/delete-category-investigation.md`.
 
 ---
 
