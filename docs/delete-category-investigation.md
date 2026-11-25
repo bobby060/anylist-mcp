@@ -113,15 +113,14 @@ not for remove via HTTPS.
    in the MCP tool throws a clear error referencing this limitation, instructing
    the user to delete custom categories in the AnyList iOS / Mac app.
 
-## What this session shipped
+## What this PR ships
 
-In `bobby060/anylist-js` (submodule):
+Not in this PR (proposed separately to `bobby060/anylist-js`, the submodule):
 
-- `lib/index.js`: `getLists()` now merges `modifiedLists[] + newLists[]`,
-  fixing an unrelated bug where long-lived clients on this account got an
-  empty list set from `user-data/get` and nothing worked.
-- `lib/list.js`: `removeCategory` retains the Rust-mirroring single-attempt
-  implementation, with a `KNOWN BUG` comment block summarizing this finding.
+- `lib/index.js`: `getLists()` merging `modifiedLists[] + newLists[]`,
+  for long-lived clients that get an empty `newLists` from `user-data/get`.
+- `lib/list.js`: a `KNOWN BUG` comment block on `removeCategory`
+  summarizing this finding.
 
 In `bobby060/anylist-mcp`:
 
