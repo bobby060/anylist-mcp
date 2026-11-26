@@ -476,6 +476,53 @@ try {
   // covered by the mocked unit tests — the `create` action refuses to make a
   // second recipe with an existing name, so the state can't be set up here.
 
+  // Writes against a second server process: its first call is a write, so
+  // nothing has warmed its recipe cache, and its edits are ones the main
+  // server's cache has not seen.
+  async function withFreshServer(fn) {
+    const freshTransport = new StdioClientTransport({
+      command: process.execPath,
+      args: ['src/server.js'],
+      env: { ...process.env },
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+    });
+    const fresh = new Client({ name: 'integration-test-fresh', version: '1.0.0' });
+    await fresh.connect(freshTransport);
+    try { return await fn(fresh); } finally { await fresh.close(); }
+  }
+
+  await test(`recipes → update as the first call on a fresh server finds the recipe`, async () => {
+    const text = await withFreshServer(async (fresh) => {
+      const r = await fresh.callTool({ name: 'recipes', arguments: { action: 'update', name: testRecipe, servings: '6' } });
+      if (r.isError) throw new Error(r.content[0].text);
+      return r.content[0].text;
+    });
+    return text;
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  await test(`recipes → update keeps an edit made by another session since the last read`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: testRecipe, note: 'Updated by integration test' } });
+    if (r.isError) throw new Error(r.content[0].text);
+    const text = await getRecipeText(testRecipe);
+    if (recipeField(text, 'Servings') !== '6') throw new Error(`the other session's servings edit was overwritten:\n${text}`);
+    return 'servings set by the other session survived this update';
+  });
+
+  await test(`recipe_collections → delete finds a collection another session made since the last read`, async () => {
+    const name = `🧪 Fresh Lookup Collection ${Date.now()}`;
+    await client.callTool({ name: 'recipe_collections', arguments: { action: 'list' } });
+    const created = await withFreshServer(fresh => fresh.callTool({ name: 'recipe_collections', arguments: { action: 'create', name, recipe_names: [testRecipe] } }));
+    if (created.isError) throw new Error(created.content[0].text);
+    const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'delete', name } });
+    if (r.isError || !r.content[0].text.includes('Deleted')) {
+      await withFreshServer(fresh => fresh.callTool({ name: 'recipe_collections', arguments: { action: 'delete', name } }));
+      throw new Error(r.content[0].text);
+    }
+    return r.content[0].text;
+  });
+
   // Recipes: update with new_name — rename in place, keep id, refuse name clashes
   const renamed = `${testRecipe} renamed`;
   await test(`recipes → rename ("${testRecipe}" → "${renamed}")`, async () => {
