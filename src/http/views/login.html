@@ -46,7 +46,7 @@
     </div>
 
     <div id="tab-signin" class="tab-panel active">
-      <form method="POST" action="/auth/login">
+      <form method="POST" action="{{basePath}}/auth/login">
         <label for="signin-email">Email</label>
         <input type="email" id="signin-email" name="email" required autocomplete="email">
         <label for="signin-password">Password</label>
@@ -68,7 +68,7 @@
         function handleGoogleSignIn(response) {
           const form = document.createElement("form");
           form.method = "POST";
-          form.action = "/auth/google";
+          form.action = "{{basePath}}/auth/google";
           const input = document.createElement("input");
           input.type = "hidden";
           input.name = "credential";
@@ -82,7 +82,7 @@
     </div>
 
     <div id="tab-register" class="tab-panel">
-      <form method="POST" action="/auth/register">
+      <form method="POST" action="{{basePath}}/auth/register">
         <label for="reg-email">Email</label>
         <input type="email" id="reg-email" name="email" required autocomplete="email">
         <label for="reg-password">Password</label>

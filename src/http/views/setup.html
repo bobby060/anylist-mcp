@@ -37,7 +37,7 @@
     <div class="success">Credentials saved successfully.</div>
     <!-- endif:saved -->
 
-    <form method="POST" action="/setup">
+    <form method="POST" action="{{basePath}}/setup">
       <label for="anylist-email">AnyList Email</label>
       <input type="email" id="anylist-email" name="anylist_username" required
              value="{{prefillUsername}}" autocomplete="off">
