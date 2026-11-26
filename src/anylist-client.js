@@ -343,28 +343,6 @@ class AnyListClient {
     }
   }
 
-  _buildCategoryMap() {
-    const categoryMap = {};
-    try {
-      // Access the raw user data from the client to get category groups
-      const userData = this.client._userData;
-      if (userData && userData.shoppingListsResponse && userData.shoppingListsResponse.categoryGroupResponses) {
-        for (const groupResponse of userData.shoppingListsResponse.categoryGroupResponses) {
-          if (groupResponse.categoryGroup && groupResponse.categoryGroup.categories) {
-            for (const category of groupResponse.categoryGroup.categories) {
-              if (category.identifier && category.name) {
-                categoryMap[category.identifier] = category.name;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to build category map: ${error.message}`);
-    }
-    return categoryMap;
-  }
-
   // ===== STORES =====
 
   getStores() {
