@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 
-const DATA_DIR = process.env.DATA_DIR || "/data";
+export const DATA_DIR = process.env.DATA_DIR || "/data";
 const DB_PATH = path.join(DATA_DIR, "anylist-mcp.db");
 
 let _db;

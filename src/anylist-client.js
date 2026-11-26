@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import AnyList from '../anylist-js/lib/index.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
@@ -28,16 +29,18 @@ export function findByNameOrId(items, nameOrId) {
 
 class AnyListClient {
   /**
-   * @param {{ username?: string, password?: string, defaultListName?: string }} [credentials]
+   * @param {{ username?: string, password?: string, defaultListName?: string, storageDir?: string }} [credentials]
    *   Optional credentials. Falls back to ANYLIST_USERNAME / ANYLIST_PASSWORD / ANYLIST_LIST_NAME
-   *   environment variables when not provided (stdio mode).
+   *   environment variables when not provided (stdio mode). storageDir holds this client's
+   *   AnyList tokens and saved account; without it anylist-js uses files in the home directory.
    */
-  constructor({ username, password, defaultListName } = {}) {
+  constructor({ username, password, defaultListName, storageDir } = {}) {
     this.client = null;
     this.targetList = null;
     this._username = username || null;
     this._password = password || null;
     this.defaultListName = defaultListName || null;
+    this._storageDir = storageDir || null;
   }
 
   async connect(listName = null) {
@@ -113,7 +116,11 @@ class AnyListClient {
   async _authenticate(username, password) {
     const client = new AnyList({
       email: username,
-      password: password
+      password: password,
+      ...(this._storageDir && {
+        credentialsFile: path.join(this._storageDir, 'credentials'),
+        userDataFile: path.join(this._storageDir, 'user-data.json'),
+      }),
     });
 
     // The websocket's pushes tell anylist-js when its copy of the account is

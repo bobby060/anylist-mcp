@@ -1,6 +1,6 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -17,6 +17,14 @@ describe("session manager", () => {
     db.createUser({ id: "user-a", email: "a@example.com" });
     db.upsertAnyListCredentials("user-a", { username: "a@example.com", password: "pw", defaultListName: "Groceries" });
     ({ getOrCreateSession, evictSession } = await import("../src/http/session-manager.js"));
+  });
+
+  it("keeps each user's AnyList files on the data volume", async () => {
+    const client = await getOrCreateSession("user-a");
+    const dir = path.join(process.env.DATA_DIR, "anylist", "user-a");
+    assert.equal(client._storageDir, dir);
+    assert.ok(existsSync(dir));
+    evictSession("user-a");
   });
 
   it("closes the AnyList client when a session is evicted", async () => {

@@ -1,5 +1,7 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import AnyListClient from "../anylist-client.js";
-import { getAnyListCredentials } from "./db.js";
+import { DATA_DIR, getAnyListCredentials } from "./db.js";
 
 const IDLE_TIMEOUT_MS =
   (parseInt(process.env.ANYLIST_SESSION_IDLE_MINUTES, 10) || 30) * 60 * 1000;
@@ -27,10 +29,14 @@ export async function getOrCreateSession(userId) {
     throw new Error("No AnyList credentials configured for this user. Complete setup first.");
   }
 
+  // On the data volume, so tokens and the saved account survive restarts.
+  const storageDir = path.join(DATA_DIR, "anylist", userId);
+  mkdirSync(storageDir, { recursive: true, mode: 0o700 });
   const client = new AnyListClient({
     username: creds.username,
     password: creds.password,
     defaultListName: creds.defaultListName,
+    storageDir,
   });
 
   const session = { client, timer: null };
