@@ -529,6 +529,20 @@ try {
     return 'renamed back, id stable';
   });
 
+  // Steps: AnyList's formatting markers are stored verbatim (a "# " heading
+  // step, inline bold/italic, a blank line inside one step)
+  const formattedSteps = ['# Sauce', 'Whisk the **soy sauce** and _honey_', 'Line one\n\nLine two'];
+  await test(`recipes → update with formatted steps stores them verbatim`, async () => {
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'update', name: testRecipe, steps: formattedSteps } });
+    if (r.isError) throw new Error(r.content[0].text);
+    await new Promise(res => setTimeout(res, 2000));
+    const text = await getRecipeText(testRecipe);
+    formattedSteps.forEach((s, idx) => {
+      if (!text.includes(`${idx + 1}. ${s}\n`)) throw new Error(`step ${idx + 1} not stored verbatim:\n${text}`);
+    });
+    return 'heading, inline formatting and multi-line step round-tripped';
+  });
+
   await test(`recipes → delete ("${testRecipe}")`, async () => {
     const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: testRecipe } });
     const text = r.content[0].text;
