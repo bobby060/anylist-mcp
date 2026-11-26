@@ -62,8 +62,8 @@ class AnyListClient {
         await this._authenticate(username, password);
       }
 
-      // Nothing refreshes lists between calls (no websocket, see _authenticate),
-      // so fetch them fresh for every call that works on a list.
+      // Rebuild lists for every call; this downloads only when the account
+      // data is stale.
       await this.client.getLists();
 
       // Find the target list
@@ -116,10 +116,10 @@ class AnyListClient {
       password: password
     });
 
-    // No websocket: on every push anylist-js re-downloads the whole account
-    // (data/user-data/get), and AnyList rate-limits that. Reads fetch instead.
+    // The websocket's pushes tell anylist-js when its copy of the account is
+    // stale; without it every read downloads the whole account.
     console.error(`Connecting to AnyList as ${username}...`);
-    await client.login(false);
+    await client.login();
     console.error('Successfully authenticated with AnyList');
 
     this.client = client;
@@ -430,8 +430,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch so changes made outside this
-      // server process (the AnyList app, another session) are reflected.
+      // refreshCache=true downloads only when a push or a write marked the
+      // account data stale (see anylist-js _getUserData), so it's cheap.
       const recipes = await this.client.getRecipes(true);
       let results = recipes.map(r => ({
         identifier: r.identifier,
@@ -461,7 +461,6 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       const recipes = await this.client.getRecipes(true);
       const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
@@ -627,7 +626,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      const recipes = await this.client.getRecipes(true);
       const existing = findByNameOrId(recipes, recipeName);
       if (!existing) {
         throw new Error(`Recipe "${recipeName}" not found`);
@@ -685,7 +684,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      const recipes = await this.client.getRecipes(true);
       const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
@@ -705,7 +704,6 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       const events = await this.client.getMealPlanningCalendarEvents(true);
       return events.map(e => ({
         identifier: e.identifier,
@@ -727,7 +725,6 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       await this.client.getMealPlanningCalendarEvents(true);
       return (this.client.mealPlanningCalendarEventLabels || []).map(l => ({
         identifier: l.identifier,
@@ -764,7 +761,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const events = await this.client.getMealPlanningCalendarEvents();
+      const events = await this.client.getMealPlanningCalendarEvents(true);
       const event = events.find(e => e.identifier === eventId);
       if (!event) {
         throw new Error(`Meal plan event "${eventId}" not found`);
@@ -821,14 +818,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch. Both getRecipeCollections()
-      // and getRecipes() draw from the same data/user-data/get response, so
-      // invalidate the recipe cache rather than force-fetching it a second
-      // time: it re-derives from the blob this call just fetched, for free,
-      // instead of a stale array left over from an earlier, unrelated call.
       const collections = await this.client.getRecipeCollections(true);
-      this.client.recipes = null;
-      const recipes = await this.client.getRecipes();
+      const recipes = await this.client.getRecipes(true);
       return collections.map(c => ({
         identifier: c.identifier,
         name: c.name,
@@ -850,7 +841,7 @@ class AnyListClient {
     try {
       const recipeIds = [];
       if (recipeNames.length > 0) {
-        const recipes = await this.client.getRecipes();
+        const recipes = await this.client.getRecipes(true);
         for (const rName of recipeNames) {
           const r = findByNameOrId(recipes, rName);
           if (r) recipeIds.push(r.identifier);
