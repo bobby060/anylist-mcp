@@ -59,6 +59,11 @@ export class MockAnyListClient {
     this._stores = [];
   }
 
+  async login() {
+    this._connected = true;
+    return true;
+  }
+
   async connect(listName = null) {
     const name = listName || process.env.ANYLIST_LIST_NAME || 'Test List';
     this._connected = true;

@@ -44,7 +44,7 @@ export function register(server, getClient) {
     const { action, name, new_name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
     try {
       const client = await getClient();
-      await client.connect(null);
+      await client.login();
       switch (action) {
         case "list": {
           const recipes = await client.getRecipes(search || null);

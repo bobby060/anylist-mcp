@@ -41,19 +41,18 @@ export async function getOrCreateSession(userId) {
 }
 
 /**
- * Evict a user's session immediately (e.g. after credential change).
+ * End a user's session now (credential change or idle timeout) and close its
+ * AnyList client.
  */
 export function evictSession(userId) {
   const session = sessions.get(userId);
-  if (session) {
-    clearTimeout(session.timer);
-    sessions.delete(userId);
-  }
+  if (!session) return;
+  clearTimeout(session.timer);
+  sessions.delete(userId);
+  session.client.disconnect().catch((err) => console.error(err.message));
 }
 
 function resetIdleTimer(userId, session) {
   clearTimeout(session.timer);
-  session.timer = setTimeout(() => {
-    sessions.delete(userId);
-  }, IDLE_TIMEOUT_MS);
+  session.timer = setTimeout(() => evictSession(userId), IDLE_TIMEOUT_MS);
 }

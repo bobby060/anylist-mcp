@@ -59,8 +59,7 @@ export async function runShoppingListsTests(client) {
   });
 
   await test('getFavoriteItems returns array', async () => {
-    const listName = process.env.ANYLIST_LIST_NAME;
-    const items = await client.getFavoriteItems(listName);
+    const items = await client.getFavoriteItems();
     if (!Array.isArray(items)) throw new Error('getFavoriteItems() should return an array');
     if (items.length > 0) {
       const item = items[0];
@@ -69,8 +68,7 @@ export async function runShoppingListsTests(client) {
   });
 
   await test('getRecentItems returns array', async () => {
-    const listName = process.env.ANYLIST_LIST_NAME;
-    const items = await client.getRecentItems(listName);
+    const items = await client.getRecentItems();
     if (!Array.isArray(items)) throw new Error('getRecentItems() should return an array');
     if (items.length > 0) {
       const item = items[0];

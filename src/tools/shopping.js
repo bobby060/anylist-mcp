@@ -221,14 +221,14 @@ export function register(server, getClient) {
         }
         case "get_favorites": {
           await client.connect(list_name || null);
-          const items = await client.getFavoriteItems(list_name);
+          const items = await client.getFavoriteItems();
           if (items.length === 0) return textResponse(`No favorite items for list "${client.targetList.name}".`);
           const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
           return textResponse(`Favorite items for "${client.targetList.name}" (${items.length}):\n${list}`);
         }
         case "get_recents": {
           await client.connect(list_name || null);
-          const items = await client.getRecentItems(list_name);
+          const items = await client.getRecentItems();
           if (items.length === 0) return textResponse(`No recent items for list "${client.targetList.name}".`);
           const list = items.map(i => `- ${i.name}${i.details ? ` [${i.details}]` : ''}`).join('\n');
           return textResponse(`Recent items for "${client.targetList.name}" (${items.length}):\n${list}`);

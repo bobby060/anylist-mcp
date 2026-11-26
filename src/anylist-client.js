@@ -57,16 +57,14 @@ class AnyListClient {
       throw error;
     }
 
-    // If already connected to the same list, skip reconnection
-    if (this.client && this.targetList && this.targetList.name === targetListName) {
-      return true;
-    }
-
     try {
-      // Create AnyList client if not already authenticated
       if (!this.client) {
         await this._authenticate(username, password);
       }
+
+      // Nothing refreshes lists between calls (no websocket, see _authenticate),
+      // so fetch them fresh for every call that works on a list.
+      await this.client.getLists();
 
       // Find the target list
       console.error(`Looking for list: "${targetListName}"`);
@@ -118,12 +116,12 @@ class AnyListClient {
       password: password
     });
 
-    // Authenticate
+    // No websocket: on every push anylist-js re-downloads the whole account
+    // (data/user-data/get), and AnyList rate-limits that. Reads fetch instead.
     console.error(`Connecting to AnyList as ${username}...`);
-    await client.login();
+    await client.login(false);
     console.error('Successfully authenticated with AnyList');
 
-    await client.getLists();
     this.client = client;
   }
 
@@ -780,12 +778,11 @@ class AnyListClient {
 
   // ===== FAVORITES & RECENTS =====
 
-  async getFavoriteItems(listName) {
-    if (!this.client) {
-      throw new Error('Not connected. Call connect() first.');
+  async getFavoriteItems() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
     }
     try {
-      await this.connect(listName);
       const favList = this.client.getFavoriteItemsByListId(this.targetList.identifier);
       if (!favList || !favList.items) {
         return [];
@@ -799,12 +796,11 @@ class AnyListClient {
     }
   }
 
-  async getRecentItems(listName) {
-    if (!this.client) {
-      throw new Error('Not connected. Call connect() first.');
+  async getRecentItems() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
     }
     try {
-      await this.connect(listName);
       const items = this.client.getRecentItemsByListId(this.targetList.identifier);
       if (!items) {
         return [];
