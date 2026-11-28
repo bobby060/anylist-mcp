@@ -151,7 +151,7 @@ app.use(onboardingRouter);
 const mcpSessions = createSessionStore(); // sessionId → { server, transport, userId }, owned per user
 
 function createMcpServer(userId) {
-  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.9.4" });
+  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.9.5" });
   registerAllTools(mcpServer, () => getOrCreateSession(userId));
   return mcpServer;
 }

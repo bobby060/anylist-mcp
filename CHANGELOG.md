@@ -1,3 +1,10 @@
+## [1.9.5](https://github.com/bobby060/anylist-mcp/compare/v1.9.4...v1.9.5) (2026-11-28)
+
+
+### Bug Fixes
+
+* honor a BASE_URL path prefix in redirects and form actions ([482f624](https://github.com/bobby060/anylist-mcp/commit/482f62426d6c48d38a749e889eb254b256a4518f))
+
 ## [1.9.4](https://github.com/bobby060/anylist-mcp/compare/v1.9.3...v1.9.4) (2026-11-28)
 
 
