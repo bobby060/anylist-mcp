@@ -46,6 +46,8 @@ There is no linter; CI runs `node --check src/server.js` plus `npm test` on Node
 
 Unit tests use `node:test` with mocks: `createMockServer()` captures `registerTool` handlers, and `MockAnyListClient` (in `test/tools/helpers.js`) holds in-memory state. They make no network calls. Per CONTRIBUTING.md, every feature or fix needs unit tests (happy path, empty data, invalid input; for a bug fix, a test that fails before the fix). Anything touching the AnyList API also needs coverage in `test/integration.js`, which must clean up whatever it creates. Paste the integration test output into the PR, because CI has no credentials to run it.
 
+Never force a full account download (`data/user-data/get` without timestamps) to test or verify something: no moving or deleting a saved `user-data.json`, no fresh clients against the live account, no comparisons against a fresh download. AnyList disabled sync on this account once over traffic. Verify against the account through reads and writes that go through the existing synced client.
+
 ## Releases and commits
 
 Branch names follow `type/short-description`. Commits use Conventional Commits, because semantic-release on `main` derives versions from them (`feat:` → minor, `fix:` → patch). The version string is hardcoded in `package.json`, `manifest.json`, `src/server.js`, and `src/http/index.js`. `scripts/sync-version.mjs` rewrites them during release, so don't bump versions by hand, and keep the `name: "anylist-mcp-server", version: "..."` literal format intact so the script's regex still matches.
