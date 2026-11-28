@@ -2,12 +2,13 @@ import { Router } from "express";
 import AnyListClient from "../anylist-client.js";
 import { upsertAnyListCredentials, getAnyListCredentials } from "./db.js";
 import { evictSession } from "./session-manager.js";
+import { basePath } from "./auth/oauth.js";
 
 const router = Router();
 
 // GET /setup — show the AnyList credentials form
 router.get("/setup", (req, res) => {
-  if (!req.session.userId) return res.redirect("/login");
+  if (!req.session.userId) return res.redirect(`${basePath()}/login`);
   const existing = getAnyListCredentials(req.session.userId);
   res.render("setup", {
     prefillUsername: existing ? existing.username : "",
@@ -20,13 +21,13 @@ router.get("/setup", (req, res) => {
 
 // POST /setup — save AnyList credentials
 router.post("/setup", async (req, res) => {
-  if (!req.session.userId) return res.redirect("/login");
+  if (!req.session.userId) return res.redirect(`${basePath()}/login`);
 
   const { anylist_username, anylist_password, default_list } = req.body || {};
 
   if (!anylist_username || !anylist_password) {
     req.session.setupError = "AnyList username and password are required.";
-    return res.redirect("/setup");
+    return res.redirect(`${basePath()}/setup`);
   }
 
   // Test the credentials before saving
@@ -39,7 +40,7 @@ router.post("/setup", async (req, res) => {
   const verifyError = await verifyCredentials(testClient, default_list);
   if (verifyError) {
     req.session.setupError = verifyError;
-    return res.redirect("/setup");
+    return res.redirect(`${basePath()}/setup`);
   }
 
   upsertAnyListCredentials(req.session.userId, {
@@ -53,9 +54,9 @@ router.post("/setup", async (req, res) => {
 
   // If an OAuth flow was pending, continue it
   if (req.session.oauthParams) {
-    return res.redirect("/oauth/consent");
+    return res.redirect(`${basePath()}/oauth/consent`);
   }
-  res.redirect("/setup?saved=1");
+  res.redirect(`${basePath()}/setup?saved=1`);
 });
 
 /**

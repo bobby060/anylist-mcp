@@ -14,7 +14,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
 import { getOrCreateSession } from "./session-manager.js";
-import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
+import oauthRouter, { requireBearerToken, basePath } from "./auth/oauth.js";
 import onboardingRouter from "./onboarding.js";
 import { registerAllTools } from "../tools/index.js";
 import { createSessionStore } from "./mcp-sessions.js";
@@ -89,6 +89,7 @@ app.use((req, res, next) => {
 // View engine (simple HTML template rendering via res.render)
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "html");
+app.locals.basePath = basePath(); // {{basePath}} in every view
 app.engine("html", (filePath, options, callback) => {
   try {
     let content = readFileSync(filePath, "utf8");

@@ -36,6 +36,14 @@ function baseUrl(req) {
   return "http://localhost:3000";
 }
 
+// Path part of BASE_URL ("/anylist" for https://example.com/anylist), so that
+// redirects and form actions work behind a proxy that serves this app under a
+// subpath and strips it. Empty when BASE_URL is unset or has no path.
+export function basePath() {
+  if (!process.env.BASE_URL) return "";
+  return new URL(process.env.BASE_URL).pathname.replace(/\/+$/, "");
+}
+
 // ── OAuth AS Metadata (RFC 8414) ──────────────────────────────────────────────
 
 router.get("/.well-known/oauth-authorization-server", (req, res) => {
@@ -115,10 +123,10 @@ router.get(["/oauth/authorize", "/authorize"], (req, res) => {
   // If the user already has an active session, skip the login step
   if (req.session.userId) {
     const hasCreds = !!getAnyListCredentials(req.session.userId);
-    return res.redirect(hasCreds ? "/oauth/consent" : "/setup");
+    return res.redirect(`${basePath()}${hasCreds ? "/oauth/consent" : "/setup"}`);
   }
 
-  res.redirect("/login");
+  res.redirect(`${basePath()}/login`);
 });
 
 // ── Token Endpoint ────────────────────────────────────────────────────────────
@@ -324,11 +332,11 @@ function completeAuth(req, res, user) {
   console.log(`[auth] completeAuth user:${user.id} oauthPending:${!!oauth} hasCreds:${hasCreds}`);
 
   if (!oauth) {
-    return res.redirect("/setup");
+    return res.redirect(`${basePath()}/setup`);
   }
 
   if (!hasCreds) {
-    return res.redirect("/setup");
+    return res.redirect(`${basePath()}/setup`);
   }
 
   return issueCodeAndRedirect(req, res, user.id, oauth);
@@ -339,7 +347,7 @@ function completeAuth(req, res, user) {
  */
 router.get("/oauth/consent", (req, res) => {
   if (!req.session.userId || !req.session.oauthParams) {
-    return res.redirect("/login");
+    return res.redirect(`${basePath()}/login`);
   }
   // Render consent view
   res.render("consent", {
@@ -353,7 +361,7 @@ router.post("/oauth/consent", (req, res) => {
   const oauth = req.session.oauthParams;
   const userId = req.session.userId;
 
-  if (!userId || !oauth) return res.redirect("/login");
+  if (!userId || !oauth) return res.redirect(`${basePath()}/login`);
 
   if (approve !== "yes") {
     const redirectUri = oauth.redirect_uri;
