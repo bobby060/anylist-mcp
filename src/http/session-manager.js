@@ -3,7 +3,7 @@ import path from "node:path";
 import AnyListClient from "../anylist-client.js";
 import { DATA_DIR, getAnyListCredentials } from "./db.js";
 
-const IDLE_TIMEOUT_MS =
+export const IDLE_TIMEOUT_MS =
   (parseInt(process.env.ANYLIST_SESSION_IDLE_MINUTES, 10) || 30) * 60 * 1000;
 
 // Map of userId → { client: AnyListClient, timer: NodeJS.Timeout }

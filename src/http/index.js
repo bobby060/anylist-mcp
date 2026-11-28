@@ -13,7 +13,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
-import { getOrCreateSession } from "./session-manager.js";
+import { getOrCreateSession, IDLE_TIMEOUT_MS } from "./session-manager.js";
 import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
 import onboardingRouter from "./onboarding.js";
 import { registerAllTools } from "../tools/index.js";
@@ -152,7 +152,9 @@ app.use(onboardingRouter);
 // session, keyed by the Mcp-Session-Id header. This is required for elicitation
 // to work (the server needs to maintain request context across the session).
 
-const mcpSessions = createSessionStore(); // sessionId → { server, transport, userId }, owned per user
+// sessionId → { server, transport, userId }, owned per user; idle ones close
+// after the same time as idle AnyList sessions.
+const mcpSessions = createSessionStore({ idleMs: IDLE_TIMEOUT_MS });
 
 function createMcpServer(userId) {
   const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "1.9.3" });
