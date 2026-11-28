@@ -1,3 +1,10 @@
+## [1.9.6](https://github.com/bobby060/anylist-mcp/compare/v1.9.5...v1.9.6) (2026-11-28)
+
+
+### Bug Fixes
+
+* describe AnyList step formatting in the recipes steps parameter ([64d2bbc](https://github.com/bobby060/anylist-mcp/commit/64d2bbc6e8eb30ff5fda94e7ed21baa4ae6a8b9a))
+
 ## [1.9.5](https://github.com/bobby060/anylist-mcp/compare/v1.9.4...v1.9.5) (2026-11-28)
 
 
