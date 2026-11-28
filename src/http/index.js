@@ -84,7 +84,7 @@ app.use((req, res, next) => {
     const body = req.method === "POST" && (req.path === "/sse" || req.path === "/mcp") && req.body
       ? " body:" + JSON.stringify(req.body).slice(0, 200)
       : "";
-    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}${body}`);
+    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.userId ?? req.session?.userId ?? "-"}${body}`);
   });
   next();
 });

@@ -14,6 +14,15 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  *   For HTTP: returns the per-user client from the session manager.
  */
 export function registerAllTools(server, getClient) {
+  // Log the data every tool returns. stderr, because stdout carries the stdio transport.
+  const registerTool = server.registerTool.bind(server);
+  server.registerTool = (name, config, handler) =>
+    registerTool(name, config, async (...args) => {
+      const result = await handler(...args);
+      console.error(`[tool] ${name} → ${result.content.map((c) => c.text).join("\n")}`);
+      return result;
+    });
+
   registerHealth(server, getClient);
   registerShopping(server, getClient);
   registerRecipes(server, getClient);
