@@ -117,6 +117,9 @@ class AnyListClient {
   // Concurrent first calls share one sign-in; a second would leave its own
   // websocket open with nothing to close it.
   _authenticate(username, password) {
+    if (this._closed) {
+      return Promise.reject(new Error('This AnyList connection was closed; retry the request.'));
+    }
     if (!this._signingIn) {
       this._signingIn = this._signIn(username, password).finally(() => {
         this._signingIn = null;
@@ -952,8 +955,13 @@ class AnyListClient {
     }
   }
 
-  async disconnect() {
-    // A sign-in still in progress would open a client after this returns.
+  /**
+   * Close the websocket, this client's only background work. Calls already
+   * running finish on the same sign-in; a new sign-in is refused.
+   */
+  async close() {
+    this._closed = true;
+    // A sign-in still in progress would open a websocket after this returns.
     await this._signingIn?.catch(() => {});
     if (this.client) {
       try {
@@ -965,6 +973,10 @@ class AnyListClient {
         throw wrappedError;
       }
     }
+  }
+
+  async disconnect() {
+    await this.close();
     this.client = null;
     this.targetList = null;
   }

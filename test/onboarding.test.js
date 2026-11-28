@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import express from "express";
 import session from "express-session";
-import { AnyList, startAnyListStandIn } from "./anylist-stand-in.js";
+import { AnyList, pb, startAnyListStandIn } from "./anylist-stand-in.js";
 
 // Set before the server modules load: db.js reads DATA_DIR on import, and
 // anylist-js defaults its files to the home directory.
@@ -14,6 +14,7 @@ process.env.HOME = mkdtempSync(path.join(tmpdir(), "anylist-mcp-home-"));
 process.env.SERVER_SECRET_KEY = "00".repeat(32);
 const db = await import("../src/http/db.js");
 const { verifyCredentials, default: onboardingRouter } = await import("../src/http/onboarding.js");
+const { getOrCreateSession, evictSession } = await import("../src/http/session-manager.js");
 
 // Minimal stand-in for AnyListClient: login() succeeds or throws like the real one,
 // connect() resolves the list or throws "not found".
@@ -74,6 +75,7 @@ describe("POST /setup", () => {
   const credentialsFile = path.join(storageDir, "credentials");
   const tokens = () => new AnyList({ email: "x", password: "pw" })._decryptCredentials(readFileSync(credentialsFile), "pw");
   const subject = (token) => JSON.parse(Buffer.from(token.split(".")[1], "base64url")).sub;
+  const token = (sub) => `${Buffer.from("{}").toString("base64url")}.${Buffer.from(JSON.stringify({ sub })).toString("base64url")}.sig`;
 
   before(async () => {
     standIn = await startAnyListStandIn();
@@ -111,5 +113,64 @@ describe("POST /setup", () => {
     while (standIn.openSockets() > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(standIn.openSockets(), 0);
     assert.equal(existsSync(path.join(process.env.HOME, ".anylist_credentials")), false);
+  });
+
+  const setup = (username) => fetch(`${baseUrl}/setup`, {
+    method: "POST",
+    body: new URLSearchParams({ anylist_username: username, anylist_password: "pw", default_list: "Groceries" }),
+    redirect: "manual",
+  });
+  const waitFor = async (condition) => {
+    const deadline = Date.now() + 3000;
+    while (!condition()) {
+      if (Date.now() > deadline) throw new Error("timed out");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  it("makes a tool call during the check wait for the new credentials", async () => {
+    db.upsertAnyListCredentials("user-a", { username: "old@example.com", password: "pw", defaultListName: "Groceries" });
+    // Hold the check's sign-in, so the tool call below comes in during the check.
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    standIn.respond = (request, res) => {
+      if (request.url !== "/auth/token" || !request.body.includes("new@example.com")) return false;
+      standIn.respond = null;
+      held.then(() => res.end(JSON.stringify({ access_token: token("uid-new@example.com"), refresh_token: "r" })));
+      return true;
+    };
+
+    const saving = setup("new@example.com");
+    await waitFor(() => standIn.respond === null);
+    const session = getOrCreateSession("user-a");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    assert.equal((await saving).headers.get("location"), "/setup?saved=1");
+    const client = await session;
+    assert.equal(client._username, "new@example.com");
+    await client.login();
+    assert.equal(subject(client.client.accessToken), "uid-new@example.com");
+    evictSession("user-a");
+  });
+
+  it("lets a tool call that is running finish when /setup replaces its session", async () => {
+    db.upsertAnyListCredentials("user-a", { username: "new@example.com", password: "pw", defaultListName: "Groceries" });
+    const client = await getOrCreateSession("user-a");
+    await client.login();
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    standIn.respond = (request, res) => {
+      if (request.url !== "/data/user-data/get") return false;
+      standIn.respond = null; // Only the running call's sync is held.
+      held.then(() => res.end(new pb.PBUserDataResponse(standIn.userData).toBuffer()));
+      return true;
+    };
+    const running = client.connect("Groceries");
+    await waitFor(() => standIn.respond === null);
+    assert.equal((await setup("new@example.com")).headers.get("location"), "/setup?saved=1");
+    release();
+    await running;
+    assert.equal(client.targetList.name, "Groceries");
+    evictSession("user-a");
   });
 });

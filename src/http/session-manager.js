@@ -8,6 +8,8 @@ const IDLE_TIMEOUT_MS =
 
 // Map of userId → { client: AnyListClient, timer: NodeJS.Timeout }
 const sessions = new Map();
+// Map of userId → a credential change in progress; no session starts until it ends.
+const credentialChanges = new Map();
 
 /**
  * Get or create an AnyListClient for a user, keeping the connection alive.
@@ -18,6 +20,10 @@ const sessions = new Map();
  * @returns {Promise<AnyListClient>}
  */
 export async function getOrCreateSession(userId) {
+  while (credentialChanges.has(userId)) {
+    await credentialChanges.get(userId).catch(() => {});
+  }
+
   if (sessions.has(userId)) {
     const session = sessions.get(userId);
     resetIdleTimer(userId, session);
@@ -54,15 +60,41 @@ export function anyListStorageDir(userId) {
 }
 
 /**
+ * Run `change` (check and store new credentials) with the user's session
+ * closed. Sessions asked for meanwhile wait and then start with whatever
+ * credentials it stored. Concurrent changes for one user run one at a time.
+ */
+export async function changeCredentials(userId, change) {
+  while (credentialChanges.has(userId)) {
+    await credentialChanges.get(userId).catch(() => {});
+  }
+
+  const running = (async () => {
+    evictSession(userId);
+    try {
+      return await change();
+    } finally {
+      evictSession(userId);
+    }
+  })();
+  credentialChanges.set(userId, running);
+  try {
+    return await running;
+  } finally {
+    credentialChanges.delete(userId);
+  }
+}
+
+/**
  * End a user's session now (credential change or idle timeout) and close its
- * AnyList client.
+ * AnyList client's websocket. Calls already running on it finish.
  */
 export function evictSession(userId) {
   const session = sessions.get(userId);
   if (!session) return;
   clearTimeout(session.timer);
   sessions.delete(userId);
-  session.client.disconnect().catch((err) => console.error(err.message));
+  session.client.close().catch((err) => console.error(err.message));
 }
 
 function resetIdleTimer(userId, session) {

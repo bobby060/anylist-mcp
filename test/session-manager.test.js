@@ -1,16 +1,16 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
-
-const AnyList = createRequire(import.meta.url)("../anylist-js/lib/index.js");
+import { startAnyListStandIn } from "./anylist-stand-in.js";
 
 describe("session manager", () => {
   let getOrCreateSession, evictSession;
+  let standIn;
 
   before(async () => {
+    standIn = await startAnyListStandIn();
     process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "anylist-mcp-test-"));
     process.env.SERVER_SECRET_KEY = "00".repeat(32);
     const db = await import("../src/http/db.js");
@@ -18,6 +18,8 @@ describe("session manager", () => {
     db.upsertAnyListCredentials("user-a", { username: "a@example.com", password: "pw", defaultListName: "Groceries" });
     ({ getOrCreateSession, evictSession } = await import("../src/http/session-manager.js"));
   });
+
+  after(() => standIn.close());
 
   it("keeps each user's AnyList files on the data volume", async () => {
     const client = await getOrCreateSession("user-a");
@@ -27,16 +29,25 @@ describe("session manager", () => {
     evictSession("user-a");
   });
 
-  it("closes the AnyList client when a session is evicted", async () => {
+  it("closes the websocket when a session is evicted", async () => {
     const client = await getOrCreateSession("user-a");
-    // A real, not-logged-in anylist-js instance stands in for a connected one.
-    client.client = new AnyList({ email: "a@example.com", password: "pw" });
+    await client.login();
+    assert.equal(standIn.openSockets(), 1);
 
     evictSession("user-a");
-    await new Promise((resolve) => setImmediate(resolve));
+    const deadline = Date.now() + 3000;
+    while (standIn.openSockets() > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
 
-    assert.equal(client.client, null);
+    assert.equal(standIn.openSockets(), 0);
     assert.notEqual(await getOrCreateSession("user-a"), client);
     evictSession("user-a");
+  });
+
+  it("refuses a new sign-in on an evicted session", async () => {
+    const client = await getOrCreateSession("user-a");
+    evictSession("user-a");
+    // A websocket opened now would have nothing left to close it.
+    await assert.rejects(client.login(), /closed/);
+    assert.equal(standIn.openSockets(), 0);
   });
 });

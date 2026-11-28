@@ -76,9 +76,9 @@ export function register(server, getClient) {
     description: buildDescription([]),
     inputSchema: {
       action: z.enum(["list_lists", "list_items", "add_item", "add_items",
-        "set_item_store", "check_item", "uncheck_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
+        "check_item", "uncheck_item", "delete_item", "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
       list_name: z.string().optional().describe("Name of the list (defaults to configured default list)"),
-      name: z.string().optional().describe("Item name (required for add_item, set_item_store, check_item, uncheck_item, delete_item)"),
+      name: z.string().optional().describe("Item name (required for add_item, check_item, uncheck_item, delete_item)"),
       items: z.array(z.union([
         z.string(),
         z.object({
@@ -94,7 +94,7 @@ export function register(server, getClient) {
       include_checked: z.boolean().optional().describe("Include checked-off items (list_items only, default false)"),
       include_notes: z.boolean().optional().describe("Include notes for each item (list_items only, default false)"),
       category: z.enum(valid_categories).optional().describe("Category for the item (add_item only, defaults to 'other')"),
-      store_name: z.string().optional().describe("Store to assign to this item (add_item and set_item_store only; omit or leave blank to clear)"),
+      store_name: z.string().optional().describe("Store to assign to this item (add_item only; in add_items, set it per item)"),
     }
   }, async (params) => {
     const { action, list_name, name, quantity, notes, include_checked, include_notes, category } = params;

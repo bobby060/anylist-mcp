@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import path from "node:path";
 import AnyListClient from "../anylist-client.js";
 import { upsertAnyListCredentials, getAnyListCredentials } from "./db.js";
-import { anyListStorageDir, evictSession } from "./session-manager.js";
+import { anyListStorageDir, changeCredentials } from "./session-manager.js";
 
 const router = Router();
 
@@ -33,31 +33,32 @@ router.post("/setup", async (req, res) => {
 
   // Test the credentials before saving. The check signs in from scratch in
   // the user's own storage: tokens saved there may be for the account being
-  // replaced, and the session that wrote them is closed first.
-  evictSession(req.session.userId);
-  const storageDir = anyListStorageDir(req.session.userId);
-  rmSync(path.join(storageDir, "credentials"), { force: true });
-  const testClient = new AnyListClient({
-    username: anylist_username,
-    password: anylist_password,
-    defaultListName: default_list || null,
-    storageDir,
-  });
+  // replaced. No session runs during the check, and the next one starts with
+  // whatever was saved.
+  const verifyError = await changeCredentials(req.session.userId, async () => {
+    const storageDir = anyListStorageDir(req.session.userId);
+    rmSync(path.join(storageDir, "credentials"), { force: true });
+    const testClient = new AnyListClient({
+      username: anylist_username,
+      password: anylist_password,
+      defaultListName: default_list || null,
+      storageDir,
+    });
 
-  const verifyError = await verifyCredentials(testClient, default_list);
+    const error = await verifyCredentials(testClient, default_list);
+    if (!error) {
+      upsertAnyListCredentials(req.session.userId, {
+        username: anylist_username,
+        password: anylist_password,
+        defaultListName: default_list || null,
+      });
+    }
+    return error;
+  });
   if (verifyError) {
     req.session.setupError = verifyError;
     return res.redirect("/setup");
   }
-
-  upsertAnyListCredentials(req.session.userId, {
-    username: anylist_username,
-    password: anylist_password,
-    defaultListName: default_list || null,
-  });
-
-  // Evict any cached session so the new credentials take effect immediately
-  evictSession(req.session.userId);
 
   // If an OAuth flow was pending, continue it
   if (req.session.oauthParams) {
