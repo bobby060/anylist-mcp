@@ -27,7 +27,7 @@ export function register(server, getClient) {
     const { action, date, start_date, end_date, title, recipe_id, label_id, details, event_id } = params;
     try {
       const client = await getClient();
-      await client.connect(null);
+      await client.login();
       switch (action) {
         case "list_events": {
           let events = await client.getMealPlanEvents();

@@ -8,11 +8,15 @@
  *   Call client.reset() (or create a fresh instance) in beforeEach.
  */
 
+import { findByNameOrId } from '../../src/anylist-client.js';
+
 export function createMockServer() {
   const handlers = {};
+  const schemas = {};
   const server = {
-    registerTool: (name, _schema, handler) => {
+    registerTool: (name, schema, handler) => {
       handlers[name] = handler;
+      schemas[name] = schema;
       // Return a stub registeredTool so callers can call .update() without error.
       return { update: () => {} };
     },
@@ -20,7 +24,7 @@ export function createMockServer() {
     // Returning null means elicitation is disabled; missing-param paths throw instead.
     server: { getClientCapabilities: () => null },
   };
-  return { server, handlers };
+  return { server, handlers, schemas };
 }
 
 export class MockAnyListClient {
@@ -55,6 +59,11 @@ export class MockAnyListClient {
     this._collections = [];
     this._pendingImport = null;
     this._stores = [];
+  }
+
+  async login() {
+    this._connected = true;
+    return true;
   }
 
   async connect(listName = null) {
@@ -96,7 +105,7 @@ export class MockAnyListClient {
     this._items.splice(idx, 1);
   }
 
-  async getItems(includeChecked = false, includeNotes = false, includeStore = false) {
+  async getItems(includeChecked = false, includeNotes = false) {
     let items = [...this._items];
     if (!includeChecked) items = items.filter(i => !i.checked);
     return items.map(i => ({
@@ -105,7 +114,7 @@ export class MockAnyListClient {
       checked: i.checked || false,
       category: i.category || 'other',
       ...(includeNotes && i.notes ? { note: i.notes } : {}),
-      ...(includeStore && i.store ? { store: i.store } : {}),
+      store: i.store || null,
     }));
   }
 
@@ -125,7 +134,7 @@ export class MockAnyListClient {
   }
 
   async getRecipeDetails(name) {
-    const r = this._recipes.find(x => x.name.toLowerCase() === name.toLowerCase());
+    const r = findByNameOrId(this._recipes, name);
     if (!r) throw new Error(`Recipe "${name}" not found`);
     return { ...r, ingredients: r.ingredients || [], preparationSteps: r.preparationSteps || [] };
   }
@@ -136,10 +145,8 @@ export class MockAnyListClient {
   }
 
   async updateRecipe(name, fields = {}) {
-    const matches = this._recipes.filter(r => r.name && r.name.toLowerCase() === name.toLowerCase());
-    if (matches.length === 0) throw new Error(`Recipe "${name}" not found`);
-    if (matches.length > 1) throw new Error(`Multiple recipes named "${name}" (${matches.length}) exist`);
-    const r = matches[0];
+    const r = findByNameOrId(this._recipes, name);
+    if (!r) throw new Error(`Recipe "${name}" not found`);
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) r[key] = value;
     }
@@ -147,9 +154,10 @@ export class MockAnyListClient {
   }
 
   async deleteRecipe(name) {
-    const idx = this._recipes.findIndex(r => r.name.toLowerCase() === name.toLowerCase());
-    if (idx === -1) throw new Error(`Recipe "${name}" not found`);
-    this._recipes.splice(idx, 1);
+    const r = findByNameOrId(this._recipes, name);
+    if (!r) throw new Error(`Recipe "${name}" not found`);
+    this._recipes.splice(this._recipes.indexOf(r), 1);
+    return { identifier: r.identifier, name: r.name };
   }
 
   async importRecipeFromUrl(url) {
@@ -188,9 +196,34 @@ export class MockAnyListClient {
     return c;
   }
 
+  async _changeRecipeCollection(adding, name, recipeNames) {
+    const c = findByNameOrId(this._collections, name);
+    if (!c) throw new Error(`Recipe collection "${name}" not found`);
+    const changed = [], unchanged = [], notFound = [];
+    const seen = new Set();
+    for (const rName of recipeNames) {
+      const r = findByNameOrId(this._recipes, rName);
+      if (!r) { notFound.push(rName); continue; }
+      if (seen.has(r)) continue;
+      seen.add(r);
+      const isIn = c.recipeNames.includes(r.name);
+      if (adding === isIn) { unchanged.push(r.name); continue; }
+      if (adding) c.recipeNames.push(r.name);
+      else c.recipeNames.splice(c.recipeNames.indexOf(r.name), 1);
+      changed.push(r.name);
+    }
+    c.recipeCount = c.recipeNames.length;
+    return { name: c.name, changed, unchanged, notFound };
+  }
+
+  async addRecipesToCollection(name, recipeNames) { return this._changeRecipeCollection(true, name, recipeNames); }
+
+  async removeRecipesFromCollection(name, recipeNames) { return this._changeRecipeCollection(false, name, recipeNames); }
+
   async deleteRecipeCollection(name) {
-    const idx = this._collections.findIndex(c => c.name.toLowerCase() === name.toLowerCase());
-    if (idx === -1) throw new Error(`Recipe collection "${name}" not found`);
-    this._collections.splice(idx, 1);
+    const c = findByNameOrId(this._collections, name);
+    if (!c) throw new Error(`Recipe collection "${name}" not found`);
+    this._collections.splice(this._collections.indexOf(c), 1);
+    return { identifier: c.identifier, name: c.name };
   }
 }

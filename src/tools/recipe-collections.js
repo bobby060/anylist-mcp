@@ -9,17 +9,20 @@ export function register(server, getClient) {
     title: "Recipe Collections",
     description: `Manage AnyList recipe collections. Actions:
 - list: Show all collections with recipe counts and names
-- create: Create a new collection, optionally with recipes`,
+- create: Create a new collection, optionally with recipes
+- add_recipes: Add existing recipes to an existing collection
+- remove_recipes: Remove recipes from a collection (the recipes themselves are not deleted)
+- delete: Delete a collection (its recipes are not deleted)`,
     inputSchema: {
-      action: z.enum(["list", "create", "delete"]).describe("The collection action to perform"),
-      name: z.string().optional().describe("Collection name (required for create, delete)"),
-      recipe_names: z.array(z.string()).optional().describe("Recipe names to include (create only)"),
+      action: z.enum(["list", "create", "add_recipes", "remove_recipes", "delete"]).describe("The collection action to perform"),
+      name: z.string().optional().describe("Collection name (required for create, add_recipes, remove_recipes, delete). For add_recipes, remove_recipes and delete, a collection id also works, and names match the same way as recipe names."),
+      recipe_names: z.array(z.string()).optional().describe("Recipe names or ids (create: recipes to include; add_recipes, remove_recipes: required)"),
     }
   }, async (params) => {
     const { action, name, recipe_names } = params;
     try {
       const client = await getClient();
-      await client.connect(null);
+      await client.login();
       switch (action) {
         case "list": {
           const collections = await client.getRecipeCollections();
@@ -33,11 +36,27 @@ export function register(server, getClient) {
           const result = await client.createRecipeCollection(collectionName, recipe_names || []);
           return textResponse(`Created recipe collection "${result.name}"`);
         }
+        case "add_recipes":
+        case "remove_recipes": {
+          const adding = action === "add_recipes";
+          if (!recipe_names || recipe_names.length === 0) return errorResponse(`Action "${action}" requires recipe_names.`);
+          let collectionName = name;
+          if (!collectionName) collectionName = await elicitRequiredField("name", adding ? "Which collection should the recipes be added to?" : "Which collection should the recipes be removed from?");
+          const result = adding
+            ? await client.addRecipesToCollection(collectionName, recipe_names)
+            : await client.removeRecipesFromCollection(collectionName, recipe_names);
+          const lines = [];
+          if (result.changed.length > 0) lines.push(`${adding ? 'Added to' : 'Removed from'} "${result.name}": ${result.changed.join(', ')}`);
+          if (result.unchanged.length > 0) lines.push(`${adding ? 'Already in' : 'Not in'} "${result.name}": ${result.unchanged.join(', ')}`);
+          if (result.notFound.length > 0) lines.push(`No recipe found named: ${result.notFound.join(', ')}`);
+          const text = lines.join('\n');
+          return result.changed.length === 0 && result.notFound.length > 0 ? errorResponse(text) : textResponse(text);
+        }
         case "delete": {
           let deleteCollectionName = name;
           if (!deleteCollectionName) deleteCollectionName = await elicitRequiredField("name", "Which collection would you like to delete?");
-          await client.deleteRecipeCollection(deleteCollectionName);
-          return textResponse(`Deleted recipe collection "${deleteCollectionName}"`);
+          const deleted = await client.deleteRecipeCollection(deleteCollectionName);
+          return textResponse(`Deleted recipe collection "${deleted.name}"`);
         }
       }
     } catch (error) {

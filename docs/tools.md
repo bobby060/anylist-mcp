@@ -26,13 +26,14 @@ Manage shopping lists and items.
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
 | `list_name` | string | No | Target list (defaults to configured default) |
-| `name` | string | For item actions | Item name |
-| `quantity` | number | No | Item quantity (add_item only, default 1) |
+| `name` | string | For add_item, check_item, uncheck_item, delete_item | Item name |
+| `items` | array | For add_items | Items to add: each a plain name or `{ name, quantity, notes, category, store_name }` |
+| `quantity` | number or string | No | Item quantity, e.g. `2` or `"500 g"` (add_item only, default 1) |
 | `notes` | string | No | Item notes (add_item only) |
 | `include_checked` | boolean | No | Include checked-off items (list_items only) |
 | `include_notes` | boolean | No | Include item notes in output (list_items only) |
-| `store_name` | string | No | Filter items by store (add_items, set_item_category only) |
-| `category` | string | No | Category for item (add_item only) |
+| `category` | enum | No | Category for the item (add_item only, default `other`) |
+| `store_name` | string | No | Store to assign to the item (add_item only; in add_items, set it per item) |
 
 **Actions:**
 
@@ -44,7 +45,10 @@ Manage shopping lists and items.
 { "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
 
 // Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store": "Costco"} }
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store_name": "Costco" } }
+
+// Add several items in one call
+{ "name": "shopping", "arguments": { "action": "add_items", "items": ["Bread", { "name": "Milk", "quantity": "2 L" }] } }
 
 // Check off an item (supports partial name matching)
 { "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
@@ -61,10 +65,8 @@ Manage shopping lists and items.
 // Get recently added items for a list
 { "name": "shopping", "arguments": { "action": "get_recents" } }
 
-// Set store for an item
-{ "name": "shopping", "arguments": { "action": "set_item_store", "name": "Milk", "store_name": "Costco" } }
-
-// Set category for an item
+// List the stores set up for a list
+{ "name": "shopping", "arguments": { "action": "list_stores" } }
 ```
 
 ---
@@ -76,7 +78,7 @@ Manage AnyList recipes, including URL import and text parsing.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
-| `name` | string | For most actions | Recipe name |
+| `name` | string | For most actions | Recipe name. For get, update and delete, a recipe ID also works. An exact name match wins; a case-insensitive match is used only when exactly one recipe has it, and an ambiguous name returns an error listing the candidates and their IDs |
 | `new_name` | string | No | Rename the recipe (update only) |
 | `search` | string | No | Filter recipes by name (list only) |
 | `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
@@ -102,6 +104,9 @@ Manage AnyList recipes, including URL import and text parsing.
 
 // Get full details — ingredients and steps
 { "name": "recipes", "arguments": { "action": "get", "name": "Chicken Tikka Masala" } }
+
+// Get a recipe by ID (shown by list and get)
+{ "name": "recipes", "arguments": { "action": "get", "name": "8f14e45fceea167a5a36dedd4bea2543" } }
 
 // Create a recipe
 { "name": "recipes", "arguments": {
@@ -180,9 +185,9 @@ Organize recipes into named collections.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | enum | Yes | `list` or `create` |
-| `name` | string | For create | Collection name |
-| `recipe_names` | string[] | No | Recipes to include on creation |
+| `action` | enum | Yes | `list`, `create`, `add_recipes`, `remove_recipes`, or `delete` |
+| `name` | string | For create, add_recipes, remove_recipes, delete | Collection name. For add_recipes, remove_recipes and delete, a collection ID also works, and names match the same way as in `recipes` |
+| `recipe_names` | string[] | For add_recipes, remove_recipes | Recipe names or IDs to include on creation, or to add or remove. Names match the same way as in `recipes` |
 
 **Actions:**
 
@@ -195,6 +200,20 @@ Organize recipes into named collections.
     "action": "create",
     "name": "Weeknight Dinners",
     "recipe_names": ["Simple Pasta", "Chicken Tikka Masala"]
+} }
+
+// Add recipes to an existing collection (recipes already in it are skipped)
+{ "name": "recipe_collections", "arguments": {
+    "action": "add_recipes",
+    "name": "Weeknight Dinners",
+    "recipe_names": ["Sheet Pan Gnocchi"]
+} }
+
+// Remove recipes from a collection (the recipes themselves are kept)
+{ "name": "recipe_collections", "arguments": {
+    "action": "remove_recipes",
+    "name": "Weeknight Dinners",
+    "recipe_names": ["Simple Pasta"]
 } }
 ```
 

@@ -365,6 +365,14 @@ try {
     return `ID ${testRecipeId} confirmed in list`;
   });
 
+  await test(`recipes → get by ID`, async () => {
+    if (!testRecipeId) return '(skipped — no recipe ID from get)';
+    const r = await client.callTool({ name: 'recipes', arguments: { action: 'get', name: testRecipeId } });
+    const text = r.content[0].text;
+    if (r.isError || !text.startsWith(`# ${testRecipe}`)) throw new Error(text);
+    return `id ${testRecipeId} resolves to "${testRecipe}"`;
+  });
+
   // Recipes: update — partial, in-place. Only provided fields change; the
   // identifier and every untouched field must survive. Never delete + recreate.
   async function getRecipeText(nm) {
@@ -659,6 +667,48 @@ try {
     return `Collection "${testCollection}" confirmed`;
   });
 
+  // Collection membership: add two scratch recipes, remove one, and check the
+  // other stays (a remove must not send, and so drop, the remaining recipes).
+  const memberA = `🧪 Collection Recipe A ${Date.now()}`;
+  const memberB = `🧪 Collection Recipe B ${Date.now()}`;
+  async function collectionLine() {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'list' } });
+    return r.content[0].text.split('\n').find(l => l.includes(`**${testCollection}**`)) || '';
+  }
+
+  await test(`recipe_collections → create scratch recipes for membership`, async () => {
+    for (const nm of [memberA, memberB]) {
+      const r = await client.callTool({ name: 'recipes', arguments: { action: 'create', name: nm } });
+      if (r.isError || !r.content[0].text.includes('Created')) throw new Error(r.content[0].text);
+    }
+    await new Promise(r => setTimeout(r, 2000));
+    return `${memberA}, ${memberB}`;
+  });
+
+  await test(`recipe_collections → add_recipes`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: {
+      action: 'add_recipes', name: testCollection, recipe_names: [memberA, memberB],
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes(`Added to "${testCollection}": ${memberA}, ${memberB}`)) throw new Error(text);
+    await new Promise(r => setTimeout(r, 2000));
+    const line = await collectionLine();
+    if (!line.includes('(2 recipes)') || !line.includes(memberA) || !line.includes(memberB)) throw new Error(`after add: ${line}`);
+    return line;
+  });
+
+  await test(`recipe_collections → remove_recipes keeps the other recipe`, async () => {
+    const r = await client.callTool({ name: 'recipe_collections', arguments: {
+      action: 'remove_recipes', name: testCollection, recipe_names: [memberA],
+    }});
+    const text = r.content[0].text;
+    if (r.isError || !text.includes(`Removed from "${testCollection}": ${memberA}`)) throw new Error(text);
+    await new Promise(r => setTimeout(r, 2000));
+    const line = await collectionLine();
+    if (!line.includes('(1 recipes)') || line.includes(memberA) || !line.includes(memberB)) throw new Error(`after remove: ${line}`);
+    return line;
+  });
+
   await test(`recipe_collections → delete ("${testCollection}")`, async () => {
     const r = await client.callTool({ name: 'recipe_collections', arguments: { action: 'delete', name: testCollection } });
     const text = r.content[0].text;
@@ -671,6 +721,16 @@ try {
     const text = r.content[0].text;
     if (text.includes(testCollection)) throw new Error(`"${testCollection}" still appears after deletion`);
     return 'Collection absent from list after deletion';
+  });
+
+  await test(`recipe_collections → delete scratch recipes`, async () => {
+    const failures = [];
+    for (const nm of [memberA, memberB]) {
+      const r = await client.callTool({ name: 'recipes', arguments: { action: 'delete', name: nm } });
+      if (r.isError || !r.content[0].text.includes('Deleted')) failures.push(r.content[0].text);
+    }
+    if (failures.length > 0) throw new Error(failures.join('; '));
+    return 'deleted';
   });
 
   // Invalid action test — SDK validates enum at protocol level, so expect a thrown error

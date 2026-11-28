@@ -1,18 +1,47 @@
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import AnyList from '../anylist-js/lib/index.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
+// Load the helpers the anylist-js library uses, resolved the same way it resolves them.
+const requireFromAnyList = createRequire(new URL('../anylist-js/lib/index.js', import.meta.url));
+const FormData = requireFromAnyList('form-data');
+const uuid = requireFromAnyList('./uuid');
+
+/**
+ * Resolve a reference to a recipe or recipe collection: its id, or its name.
+ * An exact name match wins; a case-insensitive match is used only when exactly
+ * one item has it. Returns null when nothing matches. Throws, listing the
+ * candidates and their ids, when the name matches more than one item.
+ */
+export function findByNameOrId(items, nameOrId) {
+  const byId = items.find(r => r.identifier === nameOrId);
+  if (byId) return byId;
+  const exact = items.filter(r => r.name === nameOrId);
+  const matches = exact.length > 0
+    ? exact
+    : items.filter(r => r.name && r.name.toLowerCase() === nameOrId.toLowerCase());
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  const candidates = matches.map(r => `"${r.name}" (id: ${r.identifier})`).join(', ');
+  throw new Error(`"${nameOrId}" matches ${matches.length}: ${candidates}`);
+}
+
 class AnyListClient {
   /**
-   * @param {{ username?: string, password?: string, defaultListName?: string }} [credentials]
+   * @param {{ username?: string, password?: string, defaultListName?: string, storageDir?: string }} [credentials]
    *   Optional credentials. Falls back to ANYLIST_USERNAME / ANYLIST_PASSWORD / ANYLIST_LIST_NAME
-   *   environment variables when not provided (stdio mode).
+   *   environment variables when not provided (stdio mode). storageDir holds this client's
+   *   AnyList tokens and saved account; without it anylist-js uses files in the home directory.
    */
-  constructor({ username, password, defaultListName } = {}) {
+  constructor({ username, password, defaultListName, storageDir } = {}) {
     this.client = null;
     this.targetList = null;
     this._username = username || null;
     this._password = password || null;
     this.defaultListName = defaultListName || null;
+    this._storageDir = storageDir || null;
+    this._signingIn = null;
   }
 
   async connect(listName = null) {
@@ -32,16 +61,14 @@ class AnyListClient {
       throw error;
     }
 
-    // If already connected to the same list, skip reconnection
-    if (this.client && this.targetList && this.targetList.name === targetListName) {
-      return true;
-    }
-
     try {
-      // Create AnyList client if not already authenticated
       if (!this.client) {
         await this._authenticate(username, password);
       }
+
+      // Rebuild lists for every call; this downloads only when the account
+      // data is stale.
+      await this.client.getLists();
 
       // Find the target list
       console.error(`Looking for list: "${targetListName}"`);
@@ -87,18 +114,36 @@ class AnyListClient {
     }
   }
 
-  async _authenticate(username, password) {
+  // Concurrent first calls share one sign-in; a second would leave its own
+  // websocket open with nothing to close it.
+  _authenticate(username, password) {
+    if (this._closed) {
+      return Promise.reject(new Error('This AnyList connection was closed; retry the request.'));
+    }
+    if (!this._signingIn) {
+      this._signingIn = this._signIn(username, password).finally(() => {
+        this._signingIn = null;
+      });
+    }
+    return this._signingIn;
+  }
+
+  async _signIn(username, password) {
     const client = new AnyList({
       email: username,
-      password: password
+      password: password,
+      ...(this._storageDir && {
+        credentialsFile: path.join(this._storageDir, 'credentials'),
+        userDataFile: path.join(this._storageDir, 'user-data.json'),
+      }),
     });
 
-    // Authenticate
+    // The websocket's pushes tell anylist-js when its copy of the account is
+    // stale; without it every read downloads the whole account.
     console.error(`Connecting to AnyList as ${username}...`);
     await client.login();
     console.error('Successfully authenticated with AnyList');
 
-    await client.getLists();
     this.client = client;
   }
 
@@ -146,7 +191,7 @@ class AnyListClient {
           }
 
           console.error(`Unchecked existing item: ${existingItem.name}`);
-          existingItem.save();
+          await existingItem.save();
         } else {
 
           // Item already exists and is unchecked, no action needed
@@ -157,7 +202,7 @@ class AnyListClient {
           }
           // Category not used if item already has a category
 
-          existingItem.save();
+          await existingItem.save();
         }
       } else {
         // Item doesn't exist, create new one
@@ -320,28 +365,6 @@ class AnyListClient {
     }
   }
 
-  _buildCategoryMap() {
-    const categoryMap = {};
-    try {
-      // Access the raw user data from the client to get category groups
-      const userData = this.client._userData;
-      if (userData && userData.shoppingListsResponse && userData.shoppingListsResponse.categoryGroupResponses) {
-        for (const groupResponse of userData.shoppingListsResponse.categoryGroupResponses) {
-          if (groupResponse.categoryGroup && groupResponse.categoryGroup.categories) {
-            for (const category of groupResponse.categoryGroup.categories) {
-              if (category.identifier && category.name) {
-                categoryMap[category.identifier] = category.name;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to build category map: ${error.message}`);
-    }
-    return categoryMap;
-  }
-
   // ===== STORES =====
 
   getStores() {
@@ -407,8 +430,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch so changes made outside this
-      // server process (the AnyList app, another session) are reflected.
+      // refreshCache=true downloads only when a push or a write marked the
+      // account data stale (see anylist-js _getUserData), so it's cheap.
       const recipes = await this.client.getRecipes(true);
       let results = recipes.map(r => ({
         identifier: r.identifier,
@@ -438,9 +461,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       const recipes = await this.client.getRecipes(true);
-      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
@@ -594,7 +616,7 @@ class AnyListClient {
    * `ingredients` and `preparationSteps`, when provided, REPLACE the existing
    * array wholesale — they are not merged item-by-item.
    *
-   * @param {string} recipeName - name identifying the recipe to update
+   * @param {string} recipeName - name or id of the recipe to update (see findByNameOrId)
    * @param {object} fields - subset of { name, note, sourceName, sourceUrl,
    *   prepTime, cookTime, servings, ingredients, preparationSteps }; keys with an
    *   `undefined` value are ignored. `name` renames the recipe in place.
@@ -604,15 +626,11 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
-      const matches = recipes.filter(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
-      if (matches.length === 0) {
+      const recipes = await this.client.getRecipes(true);
+      const existing = findByNameOrId(recipes, recipeName);
+      if (!existing) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
-      if (matches.length > 1) {
-        throw new Error(`Multiple recipes named "${recipeName}" (${matches.length}) exist. Rename or remove the duplicates so the target is unambiguous, then try again.`);
-      }
-      const existing = matches[0];
       if (fields.name !== undefined && recipes.some(r => r !== existing && r.name && r.name.toLowerCase() === fields.name.toLowerCase())) {
         throw new Error(`Cannot rename to "${fields.name}": a recipe with that name already exists.`);
       }
@@ -666,13 +684,14 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
-      const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
+      const recipes = await this.client.getRecipes(true);
+      const recipe = findByNameOrId(recipes, recipeName);
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
       }
       await recipe.delete();
       console.error(`Deleted recipe: ${recipe.name}`);
+      return { identifier: recipe.identifier, name: recipe.name };
     } catch (error) {
       throw new Error(`Failed to delete recipe: ${error.message}`);
     }
@@ -685,11 +704,14 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       const events = await this.client.getMealPlanningCalendarEvents(true);
       return events.map(e => ({
         identifier: e.identifier,
-        date: e.date instanceof Date ? e.date.toISOString().slice(0, 10) : String(e.date),
+        // anylist-js puts an event at noon local time on its day; in UTC that
+        // can be another day.
+        date: e.date instanceof Date
+          ? `${e.date.getFullYear()}-${String(e.date.getMonth() + 1).padStart(2, '0')}-${String(e.date.getDate()).padStart(2, '0')}`
+          : String(e.date),
         title: e.title || null,
         details: e.details || null,
         labelName: e.label ? e.label.name : null,
@@ -707,7 +729,6 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch, same reasoning as getRecipes().
       await this.client.getMealPlanningCalendarEvents(true);
       return (this.client.mealPlanningCalendarEventLabels || []).map(l => ({
         identifier: l.identifier,
@@ -744,7 +765,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const events = await this.client.getMealPlanningCalendarEvents();
+      const events = await this.client.getMealPlanningCalendarEvents(true);
       const event = events.find(e => e.identifier === eventId);
       if (!event) {
         throw new Error(`Meal plan event "${eventId}" not found`);
@@ -758,12 +779,11 @@ class AnyListClient {
 
   // ===== FAVORITES & RECENTS =====
 
-  async getFavoriteItems(listName) {
-    if (!this.client) {
-      throw new Error('Not connected. Call connect() first.');
+  async getFavoriteItems() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
     }
     try {
-      await this.connect(listName);
       const favList = this.client.getFavoriteItemsByListId(this.targetList.identifier);
       if (!favList || !favList.items) {
         return [];
@@ -777,12 +797,11 @@ class AnyListClient {
     }
   }
 
-  async getRecentItems(listName) {
-    if (!this.client) {
-      throw new Error('Not connected. Call connect() first.');
+  async getRecentItems() {
+    if (!this.targetList) {
+      throw new Error('Not connected to any list. Call connect() first.');
     }
     try {
-      await this.connect(listName);
       const items = this.client.getRecentItemsByListId(this.targetList.identifier);
       if (!items) {
         return [];
@@ -803,14 +822,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      // User-facing read — force a real fetch. Both getRecipeCollections()
-      // and getRecipes() draw from the same data/user-data/get response, so
-      // invalidate the recipe cache rather than force-fetching it a second
-      // time: it re-derives from the blob this call just fetched, for free,
-      // instead of a stale array left over from an earlier, unrelated call.
       const collections = await this.client.getRecipeCollections(true);
-      this.client.recipes = null;
-      const recipes = await this.client.getRecipes();
+      const recipes = await this.client.getRecipes(true);
       return collections.map(c => ({
         identifier: c.identifier,
         name: c.name,
@@ -832,9 +845,9 @@ class AnyListClient {
     try {
       const recipeIds = [];
       if (recipeNames.length > 0) {
-        const recipes = await this.client.getRecipes();
+        const recipes = await this.client.getRecipes(true);
         for (const rName of recipeNames) {
-          const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
+          const r = findByNameOrId(recipes, rName);
           if (r) recipeIds.push(r.identifier);
         }
       }
@@ -847,22 +860,109 @@ class AnyListClient {
     }
   }
 
+  /**
+   * Add recipes to, or remove them from, an existing collection.
+   *
+   * AnyList's web app sends one operation per recipe, with the collection's
+   * recipeIds narrowed to that recipe. The server adds or removes exactly the
+   * IDs it receives, so sending the full list on a remove would remove every
+   * recipe in the collection. The anylist library's RecipeCollection.addRecipe
+   * and removeRecipe send the full list, so they are not used here.
+   *
+   * @param {'add'|'remove'} mode
+   * @param {string} collectionName
+   * @param {string[]} recipeNames
+   * @returns {Promise<{name: string, changed: string[], unchanged: string[], notFound: string[]}>}
+   *   changed: recipes added (or removed); unchanged: already in (or not in) the collection
+   */
+  async _changeRecipeCollection(mode, collectionName, recipeNames) {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+    const verb = mode === 'add' ? 'add recipes to' : 'remove recipes from';
+    try {
+      const collections = await this.client.getRecipeCollections(true);
+      const collection = findByNameOrId(collections, collectionName);
+      if (!collection) throw new Error(`Recipe collection "${collectionName}" not found`);
+
+      const inCollection = new Set(collection.recipeIds);
+      const recipes = await this.client.getRecipes(true);
+      const changed = [];
+      const unchanged = [];
+      const notFound = [];
+      const ids = [];
+      const seen = new Set();
+      for (const rName of recipeNames) {
+        const r = findByNameOrId(recipes, rName);
+        if (!r) { notFound.push(rName); continue; }
+        if (seen.has(r.identifier)) continue;
+        seen.add(r.identifier);
+        if ((mode === 'add') === inCollection.has(r.identifier)) { unchanged.push(r.name); continue; }
+        ids.push(r.identifier);
+        changed.push(r.name);
+      }
+
+      if (ids.length > 0) {
+        const pb = this.client.protobuf;
+        const handlerId = mode === 'add' ? 'add-recipes-to-collection' : 'remove-recipes-from-collection';
+        const operations = ids.map(id => {
+          const op = new pb.PBRecipeOperation();
+          op.setMetadata({ operationId: uuid(), handlerId, userId: this.client.uid });
+          op.setRecipeDataId(this.client.recipeDataId);
+          op.setRecipeCollection(new pb.PBRecipeCollection({
+            identifier: collection.identifier,
+            timestamp: collection.timestamp,
+            name: collection.name,
+            recipeIds: [id],
+            collectionSettings: collection.collectionSettings,
+          }));
+          return op;
+        });
+        const ops = new pb.PBRecipeOperationList();
+        ops.setOperations(operations);
+        const form = new FormData();
+        form.append('operations', ops.toBuffer());
+        await this.client.client.post('data/user-recipe-data/update', { body: form });
+        console.error(`${mode === 'add' ? 'Added' : 'Removed'} ${ids.length} recipe(s) ${mode === 'add' ? 'to' : 'from'} collection: ${collection.name}`);
+      }
+      return { name: collection.name, changed, unchanged, notFound };
+    } catch (error) {
+      throw new Error(`Failed to ${verb} collection: ${error.message}`);
+    }
+  }
+
+  async addRecipesToCollection(collectionName, recipeNames) {
+    return this._changeRecipeCollection('add', collectionName, recipeNames);
+  }
+
+  async removeRecipesFromCollection(collectionName, recipeNames) {
+    return this._changeRecipeCollection('remove', collectionName, recipeNames);
+  }
+
   async deleteRecipeCollection(name) {
     if (!this.client) {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const collections = await this.client.getRecipeCollections();
-      const collection = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+      const collections = await this.client.getRecipeCollections(true);
+      const collection = findByNameOrId(collections, name);
       if (!collection) throw new Error(`Recipe collection "${name}" not found`);
       await collection.delete();
-      console.error(`Deleted recipe collection: ${name}`);
+      console.error(`Deleted recipe collection: ${collection.name}`);
+      return { identifier: collection.identifier, name: collection.name };
     } catch (error) {
       throw new Error(`Failed to delete recipe collection: ${error.message}`);
     }
   }
 
-  async disconnect() {
+  /**
+   * Close the websocket, this client's only background work. Calls already
+   * running finish on the same sign-in; a new sign-in is refused.
+   */
+  async close() {
+    this._closed = true;
+    // A sign-in still in progress would open a websocket after this returns.
+    await this._signingIn?.catch(() => {});
     if (this.client) {
       try {
         await this.client.teardown();
@@ -873,6 +973,10 @@ class AnyListClient {
         throw wrappedError;
       }
     }
+  }
+
+  async disconnect() {
+    await this.close();
     this.client = null;
     this.targetList = null;
   }

@@ -1,9 +1,11 @@
 /**
- * Tests for recipe collection operations: getRecipeCollections, createRecipeCollection
+ * Tests for recipe collection operations: getRecipeCollections, createRecipeCollection,
+ * deleteRecipeCollection
  */
 import { makeRunner, printSuiteResults } from './helpers.js';
 
 const COLLECTION = `🧪 Test Collection ${Date.now()}`;
+const COLLECTION_WITH_RECIPE = `🧪 Test Collection Recipes ${Date.now()}`;
 
 export async function runCollectionsTests(client) {
   console.log('\n📚 Recipe Collections');
@@ -42,7 +44,6 @@ export async function runCollectionsTests(client) {
       return;
     }
     const firstName = recipes[0].name;
-    const COLLECTION_WITH_RECIPE = `🧪 Test Collection Recipes ${Date.now()}`;
     const result = await client.createRecipeCollection(COLLECTION_WITH_RECIPE, [firstName]);
     if (!result.identifier) throw new Error('Should return identifier');
 
@@ -52,6 +53,15 @@ export async function runCollectionsTests(client) {
     if (found.recipeCount !== 1) throw new Error(`Expected 1 recipe, got ${found.recipeCount}`);
     if (!found.recipeNames.includes(firstName)) throw new Error(`Expected recipe "${firstName}" in collection`);
   });
+
+  await test('deleteRecipeCollection removes the created collections', async () => {
+    await client.deleteRecipeCollection(COLLECTION);
+    const collections = await client.getRecipeCollections();
+    if (collections.some(c => c.name === COLLECTION)) throw new Error(`Collection "${COLLECTION}" still exists after delete`);
+  });
+
+  // Cleanup: the collection with a recipe exists only if the account had a recipe.
+  try { await client.deleteRecipeCollection(COLLECTION_WITH_RECIPE); } catch {}
 
   return printSuiteResults('Recipe Collections', results());
 }
