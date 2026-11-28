@@ -1,7 +1,7 @@
 /**
  * Tests for list-level operations: connect, getLists, getFavoriteItems, getRecentItems
  */
-import { createConnectedClient, makeRunner, printSuiteResults } from './helpers.js';
+import { makeRunner, printSuiteResults } from './helpers.js';
 
 export async function runShoppingListsTests(client) {
   console.log('\n📋 Shopping Lists');
@@ -23,21 +23,19 @@ export async function runShoppingListsTests(client) {
     if (!names.every(n => typeof n === 'string')) throw new Error('All list names should be strings');
   });
 
+  // These use the shared client: a fresh one would sign in and sync again.
   await test('connect with explicit list name switches to that list', async () => {
     const listName = process.env.ANYLIST_LIST_NAME;
-    const fresh = await createConnectedClient(listName);
-    if (!fresh.targetList) throw new Error('Should have a targetList after connect');
-    if (fresh.targetList.name !== listName) throw new Error(`Expected "${listName}", got "${fresh.targetList.name}"`);
-    await fresh.disconnect();
+    await client.connect(listName);
+    if (!client.targetList) throw new Error('Should have a targetList after connect');
+    if (client.targetList.name !== listName) throw new Error(`Expected "${listName}", got "${client.targetList.name}"`);
   });
 
   await test('connect to same list is idempotent (reuses client)', async () => {
     const listName = process.env.ANYLIST_LIST_NAME;
-    const fresh = await createConnectedClient(listName);
-    const clientRef = fresh.client;
-    await fresh.connect(listName);
-    if (fresh.client !== clientRef) throw new Error('Should reuse existing client when reconnecting to same list');
-    await fresh.disconnect();
+    const clientRef = client.client;
+    await client.connect(listName);
+    if (client.client !== clientRef) throw new Error('Should reuse existing client when reconnecting to same list');
   });
 
   await test('connect fails without credentials gracefully', async () => {

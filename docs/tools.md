@@ -26,13 +26,14 @@ Manage shopping lists and items.
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
 | `list_name` | string | No | Target list (defaults to configured default) |
-| `name` | string | For item actions | Item name |
-| `quantity` | number | No | Item quantity (add_item only, default 1) |
+| `name` | string | For add_item, check_item, uncheck_item, delete_item | Item name |
+| `items` | array | For add_items | Items to add: each a plain name or `{ name, quantity, notes, category, store_name }` |
+| `quantity` | number or string | No | Item quantity, e.g. `2` or `"500 g"` (add_item only, default 1) |
 | `notes` | string | No | Item notes (add_item only) |
 | `include_checked` | boolean | No | Include checked-off items (list_items only) |
 | `include_notes` | boolean | No | Include item notes in output (list_items only) |
-| `store_name` | string | No | Filter items by store (add_items, set_item_category only) |
-| `category` | string | No | Category for item (add_item only) |
+| `category` | enum | No | Category for the item (add_item only, default `other`) |
+| `store_name` | string | No | Store to assign to the item (add_item only; in add_items, set it per item) |
 
 **Actions:**
 
@@ -44,7 +45,10 @@ Manage shopping lists and items.
 { "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
 
 // Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store": "Costco"} }
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store_name": "Costco" } }
+
+// Add several items in one call
+{ "name": "shopping", "arguments": { "action": "add_items", "items": ["Bread", { "name": "Milk", "quantity": "2 L" }] } }
 
 // Check off an item (supports partial name matching)
 { "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
@@ -61,10 +65,8 @@ Manage shopping lists and items.
 // Get recently added items for a list
 { "name": "shopping", "arguments": { "action": "get_recents" } }
 
-// Set store for an item
-{ "name": "shopping", "arguments": { "action": "set_item_store", "name": "Milk", "store_name": "Costco" } }
-
-// Set category for an item
+// List the stores set up for a list
+{ "name": "shopping", "arguments": { "action": "list_stores" } }
 ```
 
 ---

@@ -41,6 +41,7 @@ class AnyListClient {
     this._password = password || null;
     this.defaultListName = defaultListName || null;
     this._storageDir = storageDir || null;
+    this._signingIn = null;
   }
 
   async connect(listName = null) {
@@ -113,7 +114,18 @@ class AnyListClient {
     }
   }
 
-  async _authenticate(username, password) {
+  // Concurrent first calls share one sign-in; a second would leave its own
+  // websocket open with nothing to close it.
+  _authenticate(username, password) {
+    if (!this._signingIn) {
+      this._signingIn = this._signIn(username, password).finally(() => {
+        this._signingIn = null;
+      });
+    }
+    return this._signingIn;
+  }
+
+  async _signIn(username, password) {
     const client = new AnyList({
       email: username,
       password: password,
@@ -176,7 +188,7 @@ class AnyListClient {
           }
 
           console.error(`Unchecked existing item: ${existingItem.name}`);
-          existingItem.save();
+          await existingItem.save();
         } else {
 
           // Item already exists and is unchecked, no action needed
@@ -187,7 +199,7 @@ class AnyListClient {
           }
           // Category not used if item already has a category
 
-          existingItem.save();
+          await existingItem.save();
         }
       } else {
         // Item doesn't exist, create new one
@@ -692,7 +704,11 @@ class AnyListClient {
       const events = await this.client.getMealPlanningCalendarEvents(true);
       return events.map(e => ({
         identifier: e.identifier,
-        date: e.date instanceof Date ? e.date.toISOString().slice(0, 10) : String(e.date),
+        // anylist-js puts an event at noon local time on its day; in UTC that
+        // can be another day.
+        date: e.date instanceof Date
+          ? `${e.date.getFullYear()}-${String(e.date.getMonth() + 1).padStart(2, '0')}-${String(e.date.getDate()).padStart(2, '0')}`
+          : String(e.date),
         title: e.title || null,
         details: e.details || null,
         labelName: e.label ? e.label.name : null,
@@ -862,13 +878,12 @@ class AnyListClient {
     }
     const verb = mode === 'add' ? 'add recipes to' : 'remove recipes from';
     try {
-      const userData = await this.client._getUserData(true);
-      const recipeData = userData.recipeDataResponse;
-      const raw = findByNameOrId(recipeData.recipeCollections || [], collectionName);
-      if (!raw) throw new Error(`Recipe collection "${collectionName}" not found`);
+      const collections = await this.client.getRecipeCollections(true);
+      const collection = findByNameOrId(collections, collectionName);
+      if (!collection) throw new Error(`Recipe collection "${collectionName}" not found`);
 
-      const inCollection = new Set(raw.recipeIds || []);
-      const recipes = recipeData.recipes || [];
+      const inCollection = new Set(collection.recipeIds);
+      const recipes = await this.client.getRecipes(true);
       const changed = [];
       const unchanged = [];
       const notFound = [];
@@ -890,13 +905,13 @@ class AnyListClient {
         const operations = ids.map(id => {
           const op = new pb.PBRecipeOperation();
           op.setMetadata({ operationId: uuid(), handlerId, userId: this.client.uid });
-          op.setRecipeDataId(recipeData.recipeDataId);
+          op.setRecipeDataId(this.client.recipeDataId);
           op.setRecipeCollection(new pb.PBRecipeCollection({
-            identifier: raw.identifier,
-            timestamp: raw.timestamp,
-            name: raw.name,
+            identifier: collection.identifier,
+            timestamp: collection.timestamp,
+            name: collection.name,
             recipeIds: [id],
-            collectionSettings: raw.collectionSettings,
+            collectionSettings: collection.collectionSettings,
           }));
           return op;
         });
@@ -905,9 +920,9 @@ class AnyListClient {
         const form = new FormData();
         form.append('operations', ops.toBuffer());
         await this.client.client.post('data/user-recipe-data/update', { body: form });
-        console.error(`${mode === 'add' ? 'Added' : 'Removed'} ${ids.length} recipe(s) ${mode === 'add' ? 'to' : 'from'} collection: ${raw.name}`);
+        console.error(`${mode === 'add' ? 'Added' : 'Removed'} ${ids.length} recipe(s) ${mode === 'add' ? 'to' : 'from'} collection: ${collection.name}`);
       }
-      return { name: raw.name, changed, unchanged, notFound };
+      return { name: collection.name, changed, unchanged, notFound };
     } catch (error) {
       throw new Error(`Failed to ${verb} collection: ${error.message}`);
     }
@@ -938,6 +953,8 @@ class AnyListClient {
   }
 
   async disconnect() {
+    // A sign-in still in progress would open a client after this returns.
+    await this._signingIn?.catch(() => {});
     if (this.client) {
       try {
         await this.client.teardown();

@@ -25,9 +25,12 @@ export async function loginWithGoogle(idToken) {
     audience: process.env.GOOGLE_CLIENT_ID,
   });
   const payload = ticket.getPayload();
-  const { sub, email } = payload;
+  const { sub, email, email_verified } = payload;
 
   if (!email) throw new Error("Google account has no email.");
+  // The email signs in its existing user and is checked against the
+  // allow-list, so it must be one Google has verified the account owns.
+  if (!email_verified) throw new Error("Google account email is not verified.");
 
   // Check if user already exists by Google sub
   let user = getUserByGoogleSub(sub);

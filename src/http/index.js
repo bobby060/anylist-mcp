@@ -63,6 +63,9 @@ app.use(session({
     // secure=true only when the request actually arrived over HTTPS (via proxy).
     // When testing locally over plain HTTP this will be false, allowing cookies to work.
     secure: "auto",
+    // Not sent on cross-site POSTs, so another site can't submit /setup or
+    // the consent form as the user. Browsers don't all default to this.
+    sameSite: "lax",
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   },
 }));
@@ -89,6 +92,8 @@ app.use((req, res, next) => {
 // View engine (simple HTML template rendering via res.render)
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "html");
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 app.engine("html", (filePath, options, callback) => {
   try {
     let content = readFileSync(filePath, "utf8");
@@ -106,9 +111,9 @@ app.engine("html", (filePath, options, callback) => {
           content = content.replaceAll(startTag, "").replaceAll(endTag, "");
         }
       }
-      // Value replacement: {{key}}
+      // Value replacement: {{key}}, as text (values can come from the request)
       if (typeof v === "string" || typeof v === "number") {
-        content = content.replaceAll(`{{${k}}}`, String(v));
+        content = content.replaceAll(`{{${k}}}`, escapeHtml(String(v)));
       } else if (v === null || v === undefined) {
         content = content.replaceAll(`{{${k}}}`, "");
       }

@@ -29,14 +29,11 @@ export async function getOrCreateSession(userId) {
     throw new Error("No AnyList credentials configured for this user. Complete setup first.");
   }
 
-  // On the data volume, so tokens and the saved account survive restarts.
-  const storageDir = path.join(DATA_DIR, "anylist", userId);
-  mkdirSync(storageDir, { recursive: true, mode: 0o700 });
   const client = new AnyListClient({
     username: creds.username,
     password: creds.password,
     defaultListName: creds.defaultListName,
-    storageDir,
+    storageDir: anyListStorageDir(userId),
   });
 
   const session = { client, timer: null };
@@ -44,6 +41,16 @@ export async function getOrCreateSession(userId) {
   resetIdleTimer(userId, session);
 
   return client;
+}
+
+/**
+ * The directory for a user's AnyList tokens and saved account. It is on the
+ * data volume, so both survive restarts.
+ */
+export function anyListStorageDir(userId) {
+  const dir = path.join(DATA_DIR, "anylist", userId);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
 }
 
 /**

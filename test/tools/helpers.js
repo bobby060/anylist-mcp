@@ -103,7 +103,7 @@ export class MockAnyListClient {
     this._items.splice(idx, 1);
   }
 
-  async getItems(includeChecked = false, includeNotes = false, includeStore = false) {
+  async getItems(includeChecked = false, includeNotes = false) {
     let items = [...this._items];
     if (!includeChecked) items = items.filter(i => !i.checked);
     return items.map(i => ({
@@ -112,7 +112,7 @@ export class MockAnyListClient {
       checked: i.checked || false,
       category: i.category || 'other',
       ...(includeNotes && i.notes ? { note: i.notes } : {}),
-      ...(includeStore && i.store ? { store: i.store } : {}),
+      store: i.store || null,
     }));
   }
 

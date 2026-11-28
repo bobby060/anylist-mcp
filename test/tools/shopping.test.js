@@ -241,6 +241,13 @@ describe('shopping tool', () => {
       const result = await handlers.shopping({ action: 'list_items', include_notes: true });
       assert.ok(result.content[0].text.includes('whole milk'));
     });
+
+    it("shows each item's store", async () => {
+      client._items.push({ name: 'Milk', store: 'Costco' }, { name: 'Bread' });
+      const result = await handlers.shopping({ action: 'list_items' });
+      assert.ok(result.content[0].text.includes('Milk @Costco'));
+      assert.ok(!result.content[0].text.includes('Bread @'));
+    });
   });
 
   describe('list_lists', () => {
