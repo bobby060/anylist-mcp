@@ -14,7 +14,7 @@ const anylistClient = new AnyListClient();
 
 const server = new McpServer({
   name: "anylist-mcp-server",
-  version: "1.9.3",
+  version: "1.9.4",
 });
 
 registerAllTools(server, () => anylistClient);

@@ -1,3 +1,10 @@
+## [1.9.4](https://github.com/bobby060/anylist-mcp/compare/v1.9.3...v1.9.4) (2026-11-28)
+
+
+### Bug Fixes
+
+* **http:** omit null client_secret in dynamic client registration ([93c17cf](https://github.com/bobby060/anylist-mcp/commit/93c17cf6e5829a26ad22a0d8d63dc8861f55db6b))
+
 ## [1.9.3](https://github.com/bobby060/anylist-mcp/compare/v1.9.2...v1.9.3) (2026-11-14)
 
 
