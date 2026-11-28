@@ -46,7 +46,7 @@ There is no linter; CI runs `node --check src/server.js` plus `npm test` on Node
 
 Unit tests use `node:test` with mocks: `createMockServer()` captures `registerTool` handlers, and `MockAnyListClient` (in `test/tools/helpers.js`) holds in-memory state. They make no network calls. Per CONTRIBUTING.md, every feature or fix needs unit tests (happy path, empty data, invalid input; for a bug fix, a test that fails before the fix). Anything touching the AnyList API also needs coverage in `test/integration.js`, which must clean up whatever it creates. Paste the integration test output into the PR, because CI has no credentials to run it.
 
-Never force a full account download (`data/user-data/get` without timestamps) to test or verify something: no moving or deleting a saved `user-data.json`, no fresh clients against the live account, no comparisons against a fresh download. AnyList disabled sync on this account once over traffic. Verify against the account through reads and writes that go through the existing synced client.
+Keep AnyList traffic from testing to a minimum; AnyList disabled sync on this account once over traffic. Prove behavior with the local stand-in servers in `anylist-js/test/`, not the live account. Never force a full account download (`data/user-data/get` without timestamps): no moving or deleting a saved `user-data.json`, no fresh clients against the live account, no comparisons against a fresh download. After a deploy, check the live server with one read through the existing synced client and its logs; no scratch writes, extra restarts or repeated reads.
 
 ## Releases and commits
 
