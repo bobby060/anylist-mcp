@@ -604,7 +604,12 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      // Force a fetch. anylist-js starts its recipe cache as an empty array, so
+      // a cached lookup before any read finds nothing, and a cache warmed
+      // earlier misses edits made in the AnyList apps since then. The merge
+      // below starts from the fetched fields, so a stale copy would write
+      // those edits back over.
+      const recipes = await this.client.getRecipes(true);
       const matches = recipes.filter(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
       if (matches.length === 0) {
         throw new Error(`Recipe "${recipeName}" not found`);
@@ -666,7 +671,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const recipes = await this.client.getRecipes();
+      // Force a fetch, as in updateRecipe().
+      const recipes = await this.client.getRecipes(true);
       const recipe = recipes.find(r => r.name && r.name.toLowerCase() === recipeName.toLowerCase());
       if (!recipe) {
         throw new Error(`Recipe "${recipeName}" not found`);
@@ -832,7 +838,8 @@ class AnyListClient {
     try {
       const recipeIds = [];
       if (recipeNames.length > 0) {
-        const recipes = await this.client.getRecipes();
+        // Force a fetch, as in updateRecipe().
+        const recipes = await this.client.getRecipes(true);
         for (const rName of recipeNames) {
           const r = recipes.find(r => r.name && r.name.toLowerCase() === rName.toLowerCase());
           if (r) recipeIds.push(r.identifier);
@@ -852,7 +859,8 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
     try {
-      const collections = await this.client.getRecipeCollections();
+      // Force a fetch, as in updateRecipe().
+      const collections = await this.client.getRecipeCollections(true);
       const collection = collections.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
       if (!collection) throw new Error(`Recipe collection "${name}" not found`);
       await collection.delete();
