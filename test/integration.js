@@ -43,6 +43,7 @@ try {
     if (!names.includes('shopping')) throw new Error('Missing shopping tool');
     if (!names.includes('recipes')) throw new Error('Missing recipes tool');
     if (!names.includes('meal_plan')) throw new Error('Missing meal_plan tool');
+    if (!names.includes('categories')) throw new Error('Missing categories tool');
     return `${names.length} tools found`;
   });
 
@@ -188,6 +189,78 @@ try {
 
   // Shopping: add_items with plain string names
   const bulkStringItems = [`🧪 Bulk String 1 ${Date.now()}`, `🧪 Bulk String 2 ${Date.now()}`, `🧪 Bulk String 3 ${Date.now()}`];
+  // Categories: create → list → rename → add_item into it → set_item_category → delete.
+  // Runs against the scratch list. delete_category must never report a false success:
+  // either the category is really gone, or the tool returns the clear "still present" error.
+  const testCategory = `🧪 Category ${Date.now()}`;
+  const renamedCategory = `${testCategory} renamed`;
+  const catItem = `🧪 Cat Item ${Date.now()}`;
+  const movedItem = `🧪 Moved Item ${Date.now()}`;
+  const cat = (args) => client.callTool({ name: 'categories', arguments: { list_name: LIST_NAME, ...args } });
+  const listCats = async () => (await cat({ action: 'list_categories' })).content[0].text;
+
+  await test('categories → list_categories', async () => {
+    const r = await cat({ action: 'list_categories' });
+    if (r.isError) throw new Error(r.content[0].text);
+    return r.content[0].text.split('\n')[0];
+  });
+
+  await test(`categories → create_category ("${testCategory}")`, async () => {
+    const r = await cat({ action: 'create_category', name: testCategory });
+    if (r.isError || !r.content[0].text.includes('Created category')) throw new Error(r.content[0].text);
+    if (!(await listCats()).includes(testCategory)) throw new Error('created category not in list_categories');
+    return r.content[0].text;
+  });
+
+  await test('categories → create_category in a missing group errors', async () => {
+    const r = await cat({ action: 'create_category', name: `${testCategory} x`, group_name: '🧪 no such group' });
+    if (!r.isError || !r.content[0].text.includes('not found')) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  });
+
+  await test('categories → rename_category (case- and whitespace-tolerant lookup)', async () => {
+    const r = await cat({ action: 'rename_category', name: `  ${testCategory.toUpperCase()} `, new_name: renamedCategory });
+    if (r.isError) throw new Error(r.content[0].text);
+    const text = await listCats();
+    if (!text.includes(renamedCategory)) throw new Error('renamed category not in list_categories');
+    return r.content[0].text;
+  });
+
+  await test(`shopping → add_item with category_name ("${catItem}")`, async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: catItem, list_name: LIST_NAME, category_name: renamedCategory } });
+    if (r.isError || !r.content[0].text.includes('Successfully')) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  });
+
+  await test('shopping → add_item with an unknown category_name errors', async () => {
+    const r = await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: `${catItem} x`, list_name: LIST_NAME, category_name: '🧪 no such category' } });
+    if (!r.isError || !r.content[0].text.includes('not found')) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  });
+
+  await test(`categories → set_item_category ("${movedItem}")`, async () => {
+    await client.callTool({ name: 'shopping', arguments: { action: 'add_item', name: movedItem, list_name: LIST_NAME } });
+    const r = await cat({ action: 'set_item_category', item_name: movedItem, category_name: renamedCategory });
+    if (r.isError || !r.content[0].text.includes('Assigned')) throw new Error(r.content[0].text);
+    return r.content[0].text;
+  });
+
+  await test('shopping → cleanup category test items', async () => {
+    for (const name of [catItem, movedItem]) {
+      const r = await client.callTool({ name: 'shopping', arguments: { action: 'delete_item', name, list_name: LIST_NAME } });
+      if (r.isError) throw new Error(r.content[0].text);
+    }
+    return 'deleted 2 items';
+  });
+
+  await test(`categories → delete_category ("${renamedCategory}") never reports a false success`, async () => {
+    const r = await cat({ action: 'delete_category', name: renamedCategory, confirm: true });
+    const stillThere = (await listCats()).includes(renamedCategory);
+    if (!r.isError && stillThere) throw new Error('reported success but the category is still present');
+    if (r.isError && !r.content[0].text.includes('still present')) throw new Error(r.content[0].text);
+    return r.isError ? 'delete not applied by AnyList; tool reported it clearly (known issue)' : 'category deleted';
+  });
+
   await test('shopping → add_items with plain string names', async () => {
     const r = await client.callTool({ name: 'shopping', arguments: {
       action: 'add_items', list_name: 'Test List', items: bulkStringItems,

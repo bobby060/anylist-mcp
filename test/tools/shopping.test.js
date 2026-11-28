@@ -15,6 +15,28 @@ describe('shopping tool', () => {
   });
 
   describe('add_item', () => {
+    it('adds an item into a custom category by name', async () => {
+      client._categoryGroups = [{ identifier: 'g-1', name: 'Aisles', categories: [{ identifier: 'c-1', name: 'Bakery', sortIndex: 0 }] }];
+      const result = await handlers.shopping({ action: 'add_item', name: 'Bagels', category_name: 'bakery', quantity: 2 });
+      assert.ok(result.content[0].text.includes('Successfully added "Bagels" to category "bakery"'));
+      assert.equal(client._items[0].customCategory, 'Bakery');
+      assert.equal(client._items[0].quantity, 2);
+    });
+
+    it('passes store_name through when adding into a custom category', async () => {
+      client._stores = [{ name: 'Costco' }];
+      client._categoryGroups = [{ identifier: 'g-1', name: 'Aisles', categories: [{ identifier: 'c-1', name: 'Bakery', sortIndex: 0 }] }];
+      await handlers.shopping({ action: 'add_item', name: 'Bagels', category_name: 'Bakery', store_name: 'Costco' });
+      assert.equal(client._items[0].store, 'Costco');
+    });
+
+    it('errors when category_name does not match a category', async () => {
+      const result = await handlers.shopping({ action: 'add_item', name: 'Bagels', category_name: 'Nope' });
+      assert.ok(result.isError);
+      assert.ok(result.content[0].text.includes('Category "Nope" not found'));
+      assert.equal(client._items.length, 0);
+    });
+
     it('adds an item', async () => {
       const result = await handlers.shopping({ action: 'add_item', name: 'Milk' });
       assert.ok(result.content[0].text.includes('Successfully added "Milk"'));

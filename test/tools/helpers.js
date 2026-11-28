@@ -39,6 +39,8 @@ export class MockAnyListClient {
     this._collections = [];
     this._pendingImport = null;
     this._stores = [];
+    this._categoryGroups = [];
+    this._categoryDeleteIsDropped = false;
   }
 
   reset() {
@@ -55,6 +57,8 @@ export class MockAnyListClient {
     this._collections = [];
     this._pendingImport = null;
     this._stores = [];
+    this._categoryGroups = [];
+    this._categoryDeleteIsDropped = false;
   }
 
   async connect(listName = null) {
@@ -192,5 +196,69 @@ export class MockAnyListClient {
     const idx = this._collections.findIndex(c => c.name.toLowerCase() === name.toLowerCase());
     if (idx === -1) throw new Error(`Recipe collection "${name}" not found`);
     this._collections.splice(idx, 1);
+  }
+
+  // --- Custom categories ---------------------------------------------------
+  // _categoryGroups: [{ identifier, name, categories: [{ identifier, name, sortIndex, isSystem }] }]
+  // _categoryDeleteIsDropped: simulate AnyList silently dropping remove-category.
+
+  _findCategory(name) {
+    const target = String(name || '').trim().toLowerCase();
+    for (const group of this._categoryGroups) {
+      const category = group.categories.find(c => c.name.trim().toLowerCase() === target);
+      if (category) return { group, category };
+    }
+    return null;
+  }
+
+  async getCategoryGroups() {
+    return this._categoryGroups.map(g => ({ ...g, categories: [...g.categories] }));
+  }
+
+  async createCategory(name, { groupName = null } = {}) {
+    const clean = String(name || '').trim();
+    if (!clean) throw new Error('Category name is required.');
+    const group = groupName
+      ? this._categoryGroups.find(g => g.name.toLowerCase() === groupName.toLowerCase())
+      : this._categoryGroups[0];
+    if (!group) {
+      throw new Error(groupName
+        ? `Category group "${groupName}" not found in list "${this.targetList.name}".`
+        : `List "${this.targetList.name}" has no category groups.`);
+    }
+    const created = { identifier: `cat-${group.categories.length + 1}`, name: clean, sortIndex: 0, isSystem: false };
+    group.categories.push(created);
+    return created;
+  }
+
+  async renameCategory(currentName, newName) {
+    const found = this._findCategory(currentName);
+    if (!found) throw new Error(`Category "${currentName}" not found in list "${this.targetList.name}".`);
+    found.category.name = String(newName).trim();
+    return found.category;
+  }
+
+  async deleteCategory(name) {
+    const found = this._findCategory(name);
+    if (!found) throw new Error(`Category "${name}" not found in list "${this.targetList.name}".`);
+    if (this._categoryDeleteIsDropped) {
+      throw new Error(`AnyList accepted the delete but category "${name}" is still present after re-fetching.`);
+    }
+    found.group.categories = found.group.categories.filter(c => c !== found.category);
+  }
+
+  async setItemCategory(itemName, categoryName) {
+    const item = this._items.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+    if (!item) throw new Error(`Item "${itemName}" not found in list "${this.targetList.name}".`);
+    const found = this._findCategory(categoryName);
+    if (!found) throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}".`);
+    item.customCategory = found.category.name;
+  }
+
+  async addItemToCategory(name, categoryName, { quantity = 1, notes = null, store = null } = {}) {
+    const found = this._findCategory(categoryName);
+    if (!found) throw new Error(`Category "${categoryName}" not found in list "${this.targetList.name}". Use list_categories to see valid names.`);
+    this._items.push({ name, quantity, notes, category: 'other', customCategory: found.category.name, store });
+    return { name, categoryName: found.category.name };
   }
 }
