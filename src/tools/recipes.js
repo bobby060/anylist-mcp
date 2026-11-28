@@ -28,7 +28,7 @@ export function register(server, getClient) {
         name: z.string().describe("Ingredient name, e.g. 'flour'"),
         quantity: z.string().describe("Quantity with unit, e.g. '2 cups'"),
       })).optional().describe("Ingredients with name and quantity (create, update). On update, replaces the entire ingredient list."),
-      steps: z.array(z.string()).optional().describe("Preparation steps in order (create, update). On update, replaces the entire step list."),
+      steps: z.array(z.string()).optional().describe("Preparation steps in order (create, update). On update, replaces the entire step list. AnyList formatting: a step that is only \"# Sauce\" shows as an unnumbered section heading; **bold** and _italic_ work inline; a multi-line step is ONE entry with a blank line between its lines (\"Line one\\n\\nLine two\"). Never type a leading \">\": that is only the web editor's marker and shows as a literal character. Use formatting only where it makes a recipe easier to follow."),
       note: z.string().optional().describe("Recipe notes (create, update)"),
       source_name: z.string().optional().describe("Source name (create, update)"),
       source_url: z.string().optional().describe("Source URL (create, update)"),

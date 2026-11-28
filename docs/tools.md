@@ -80,7 +80,7 @@ Manage AnyList recipes, including URL import and text parsing.
 | `new_name` | string | No | Rename the recipe (update only) |
 | `search` | string | No | Filter recipes by name (list only) |
 | `ingredients` | array | No | `[{ name, quantity }]` (create, update — replaces list on update) |
-| `steps` | string[] | No | Preparation steps (create, update — replaces list on update) |
+| `steps` | string[] | No | Preparation steps (create, update — replaces list on update). A step that is only `# Sauce` is an unnumbered section heading; `**bold**` and `_italic_` render; a multi-line step is one entry with `\n\n` between its lines. Don't send the web editor's leading `>`: it is stored as a literal character |
 | `note` | string | No | Recipe notes (create, update) |
 | `source_name` | string | No | Source attribution (create, update) |
 | `source_url` | string | No | Source URL (create, update) |

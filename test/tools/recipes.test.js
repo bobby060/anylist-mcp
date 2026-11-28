@@ -86,6 +86,34 @@ describe('recipes tool', () => {
     });
   });
 
+  describe('step formatting', () => {
+    const formatted = ['# Sauce', 'Whisk the **soy sauce** and _honey_', 'Line one\n\nLine two'];
+
+    it('documents AnyList step formatting in the steps description', () => {
+      let schema;
+      register({ registerTool: (_name, s) => { schema = s; return { update: () => {} }; }, server: { getClientCapabilities: () => null } }, () => Promise.resolve(client));
+      const description = schema.inputSchema.steps.description;
+      assert.ok(description.includes('"# Sauce"'));
+      assert.ok(description.includes('**bold**'));
+      assert.ok(description.includes('\\n\\n'));
+      assert.ok(description.includes('">"'));
+    });
+
+    it('passes formatted steps through unchanged on create and update', async () => {
+      await handlers.recipes({ action: 'create', name: 'Stir Fry', steps: formatted });
+      assert.deepEqual(client._recipes[0].preparationSteps, formatted);
+      client._recipes[0].identifier = 'r-1';
+      await handlers.recipes({ action: 'update', name: 'Stir Fry', steps: [...formatted].reverse() });
+      assert.deepEqual(client._recipes[0].preparationSteps, [...formatted].reverse());
+    });
+
+    it('clears the steps when update sends an empty list', async () => {
+      client._recipes.push({ identifier: 'r-1', name: 'Stir Fry', preparationSteps: formatted });
+      await handlers.recipes({ action: 'update', name: 'Stir Fry', steps: [] });
+      assert.deepEqual(client._recipes[0].preparationSteps, []);
+    });
+  });
+
   describe('times', () => {
     it('shows stored seconds as minutes in list and get', async () => {
       client._recipes.push({ identifier: 'r-1', name: 'Chili', prepTime: 2400, cookTime: 2700 });
